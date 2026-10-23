@@ -14,15 +14,37 @@ Deno.serve(async (req) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SECRET_KEY');
-  const webhookSecret = Deno.env.get('PRINTFUL_WEBHOOK_SECRET');
-  if (!supabaseUrl || !serviceRoleKey || !webhookSecret) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return json({ error: 'The Printful webhook is not configured.' }, 503);
   }
 
+  const signingSecret = Deno.env.get('PRINTFUL_WEBHOOK_SIGNING_SECRET');
+  const legacySecret = Deno.env.get('PRINTFUL_WEBHOOK_SECRET');
+
+  const reqUrl = new URL(req.url);
+  const urlToken = reqUrl.searchParams.get('token');
+
   const rawBody = await req.text();
-  const signature = req.headers.get('x-pf-webhook-signature');
-  if (!signature || !(await verifyPrintfulSignature(rawBody, signature, webhookSecret))) {
-    return json({ error: 'Invalid Printful webhook signature.' }, 401);
+
+  let authenticated = false;
+
+  // ── v2: HMAC-SHA256 signature verification using the Printful signing secret ──
+  if (signingSecret) {
+    const signature = req.headers.get('x-pf-webhook-signature');
+    if (signature && (await verifyPrintfulSignature(rawBody, signature, signingSecret))) {
+      authenticated = true;
+    }
+  }
+
+  // ── Legacy: URL-token fallback for webhooks without v2 signing support ────────
+  if (!authenticated && legacySecret && urlToken) {
+    if (constantTimeEqual(urlToken, legacySecret)) {
+      authenticated = true;
+    }
+  }
+
+  if (!authenticated) {
+    return json({ error: 'Unauthorized: missing or invalid Printful webhook credentials.' }, 401);
   }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
@@ -135,10 +157,23 @@ async function findStoreOrderId(
   return (data?.order_id as string | undefined) ?? null;
 }
 
+function hexToBytes(hex: string): Uint8Array {
+  const cleanHex = hex.replace(/^0x/i, '');
+  if (cleanHex.length % 2 !== 0) {
+    throw new Error('Hex signing secret must have an even number of characters');
+  }
+  const bytes = new Uint8Array(cleanHex.length / 2);
+  for (let i = 0; i < cleanHex.length; i += 2) {
+    bytes[i / 2] = parseInt(cleanHex.substring(i, i + 2), 16);
+  }
+  return bytes;
+}
+
 async function verifyPrintfulSignature(body: string, signature: string, secret: string) {
+  const keyBytes = isHexString(secret) ? hexToBytes(secret) : new TextEncoder().encode(secret);
   const key = await crypto.subtle.importKey(
     'raw',
-    new TextEncoder().encode(secret),
+    keyBytes,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign'],
@@ -148,6 +183,10 @@ async function verifyPrintfulSignature(body: string, signature: string, secret: 
   const base64 = btoa(String.fromCharCode(...digest));
   const normalized = signature.trim().replace(/^(sha256=|v1=)/i, '');
   return constantTimeEqual(normalized.toLowerCase(), hex) || constantTimeEqual(normalized, base64);
+}
+
+function isHexString(value: string): boolean {
+  return /^[0-9a-fA-F]+$/.test(value) && value.length % 2 === 0;
 }
 
 function constantTimeEqual(left: string, right: string) {

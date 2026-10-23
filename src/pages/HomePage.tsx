@@ -72,21 +72,23 @@ export function HomePage() {
 }
 
 function Hero({ settings }: { settings: SiteSettings | null }) {
-  const headline = settings?.hero_headline ?? 'clothes made by a boy from the scheme, for the people of the schemes.';
+  const headline = settings?.hero_headline ?? 'Fae the Scheme to the Scene';
   const subtext = settings?.hero_subtext ?? 'AB16 Clothing. Independent streetwear. Music. Culture. Identity.';
   const heroImage = settings?.hero_image_url ?? HERO_IMAGE;
 
   return (
-    <section className="relative h-[92vh] min-h-[600px] w-full bg-jet overflow-hidden">
-      <img src={heroImage} alt="AB16 Clothing hero" className="absolute inset-0 w-full h-full object-cover opacity-50" />
-      <div className="absolute inset-0 bg-gradient-to-b from-jet via-jet/90 to-jet/50" />
+    <section className="relative h-[92vh] min-h-[600px] w-full bg-jet">
+      <div className="absolute inset-0 overflow-hidden">
+        <img src={heroImage} alt="AB16 Clothing hero" className="absolute inset-0 w-full h-full object-cover opacity-50" />
+        <div className="absolute inset-0 bg-gradient-to-b from-jet via-jet/90 to-jet/50" />
+      </div>
 
       <div className="relative h-full container-base flex flex-col justify-end pt-16 pb-20 lg:pt-24 lg:pb-28">
-        <div className="max-w-3xl animate-fade-up">
+        <div className="max-w-3xl animate-fade-up overflow-visible">
           <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-bone/60 mb-5">
             AB16 Clothing × Jamie G Music — Aberdeen
           </p>
-          <h1 className="text-display-2xl font-display font-extrabold text-bone leading-[0.95]">
+          <h1 className="text-display-2xl font-display font-extrabold text-bone leading-[0.95] w-full break-words">
             {headline}
           </h1>
           <p className="mt-6 text-base lg:text-lg text-bone/70 max-w-xl leading-relaxed">

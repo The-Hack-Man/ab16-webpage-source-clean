@@ -13,7 +13,7 @@
     scroll-behavior: smooth;
   }
   body {
-    @apply bg-jet text-jet font-sans;
+    @apply bg-jet text-jet font-sans overflow-x-clip;
     font-feature-settings: 'ss01', 'cv01';
   }
   ::selection {
