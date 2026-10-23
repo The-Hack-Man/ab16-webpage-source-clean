@@ -1,14 +1,9 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
-import {
-  ReleasePublisher,
-  type PublishRequest,
-  type AuthContext,
-  type ReleasePublisherConfig,
-} from '../../../engine/engine/index.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
 interface PublishBody {
@@ -17,7 +12,101 @@ interface PublishBody {
   actorId?: string;
 }
 
-const PUBLISHER_CONFIG: ReleasePublisherConfig = { requireMediaUrls: false };
+type Result<T> = { ok: true; value: T } | { ok: false; error: Error };
+
+interface AuthContext {
+  userId: string;
+  role: string | null;
+  permissions?: string[];
+}
+
+interface PublishRequest {
+  releaseId: string;
+  pushToStreaming?: boolean;
+  actorId?: string;
+  correlationId?: string;
+}
+
+interface PublishResult {
+  releaseId: string;
+  publishedAt: string;
+  affectedPaths: string[];
+}
+
+interface ReleaseRecord {
+  id: string;
+  title: string;
+  artist: string;
+  type: 'single' | 'ep' | 'album' | 'video';
+  status: 'draft' | 'scheduled' | 'upcoming' | 'published' | 'archived';
+  releaseDate: string;
+  tracks: { id: string; releaseId: string; position: number; title: string; durationSeconds: number; isrc?: string; mediaUrl?: string }[];
+  createdAt: string;
+}
+
+interface MusicContentReader {
+  getReleaseById(id: string): Promise<Result<ReleaseRecord | null>>;
+  listReleases(): Promise<Result<ReleaseRecord[]>>;
+  listCampaigns(): Promise<Result<{ id: string; title: string; status: string; startsAt: string; endsAt: string }[]>>;
+}
+
+interface MusicPublicationService {
+  publish(releaseId: string): Promise<Result<ReleaseRecord>>;
+  schedule(releaseId: string, publishAt: string): Promise<Result<ReleaseRecord>>;
+}
+
+interface WebsitePublisher {
+  publish(request: PublishRequest): Promise<Result<PublishResult>>;
+  unpublish(releaseId: string): Promise<Result<void>>;
+}
+
+interface AuditEventWriter {
+  record(event: { actor: string; action: string; resourceType: string; resourceId: string; correlationId?: string; meta?: Record<string, unknown> }): Promise<Result<{ id: string; ts: string; actor: string; action: string; resourceType: string; resourceId: string; correlationId?: string; meta?: Record<string, unknown> }>>;
+}
+
+function ok<T>(value: T): Result<T> {
+  return { ok: true, value };
+}
+
+function err(message: string | Error): Result<never> {
+  return { ok: false, error: message instanceof Error ? message : new Error(message) };
+}
+
+async function publishRelease(
+  ctx: AuthContext,
+  request: PublishRequest,
+  contentReader: MusicContentReader,
+  publicationService: MusicPublicationService,
+  websitePublisher: WebsitePublisher,
+  auditWriter: AuditEventWriter,
+): Promise<Result<PublishResult & { release?: ReleaseRecord }>> {
+  const releaseResult = await contentReader.getReleaseById(request.releaseId);
+  if (!releaseResult.ok) return releaseResult;
+  const release = releaseResult.value;
+  if (!release) return err(`Release ${request.releaseId} not found`);
+
+  const publishResult = await publicationService.publish(request.releaseId);
+  if (!publishResult.ok) return publishResult;
+
+  const websiteResult = await websitePublisher.publish({
+    releaseId: request.releaseId,
+    pushToStreaming: request.pushToStreaming ?? false,
+    actorId: request.actorId ?? ctx.userId,
+    correlationId: request.correlationId,
+  });
+  if (!websiteResult.ok) return websiteResult;
+
+  await auditWriter.record({
+    actor: request.actorId ?? ctx.userId,
+    action: 'release.published',
+    resourceType: 'music_release',
+    resourceId: request.releaseId,
+    correlationId: request.correlationId,
+    meta: { pushToStreaming: request.pushToStreaming ?? false },
+  });
+
+  return ok({ ...websiteResult.value, release: publishResult.value });
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -48,7 +137,7 @@ Deno.serve(async (req) => {
       return jsonError('Invalid or expired session', 401);
     }
 
-    const userRole = (user.app_metadata as { role?: string })?.role ?? user.user_metadata?.role;
+    const userRole = (user.app_metadata as { role?: string })?.role;
     const isAdmin = userRole === 'admin' || userRole === 'super_admin';
 
     if (!isAdmin) {
@@ -69,7 +158,7 @@ Deno.serve(async (req) => {
 
     const serviceRoleDb = createClient(supabaseUrl, serviceRoleKey);
 
-    const contentReader = {
+    const contentReader: MusicContentReader = {
       getReleaseById: async (id: string) => {
         const { data: release, error: relErr } = await serviceRoleDb
           .from('music_releases')
@@ -77,8 +166,8 @@ Deno.serve(async (req) => {
           .eq('id', id)
           .maybeSingle();
 
-        if (relErr) return { ok: false, error: new Error(relErr.message) } as const;
-        if (!release) return { ok: true, value: null } as const;
+        if (relErr) return err(relErr.message);
+        if (!release) return ok(null);
 
         const { data: tracks, error: trErr } = await serviceRoleDb
           .from('tracks')
@@ -86,21 +175,18 @@ Deno.serve(async (req) => {
           .eq('release_id', id)
           .order('position');
 
-        if (trErr) return { ok: false, error: new Error(trErr.message) } as const;
+        if (trErr) return err(trErr.message);
 
-        return {
-          ok: true,
-          value: {
-            id: release.id,
-            title: release.title,
-            artist: release.artist,
-            type: release.release_type as 'single' | 'ep' | 'album' | 'video',
-            status: normalizeStatus(release.status),
-            releaseDate: release.release_date ?? new Date().toISOString(),
-            tracks: (tracks ?? []).map(mapTrack),
-            createdAt: release.created_at ?? new Date().toISOString(),
-          },
-        } as const;
+        return ok({
+          id: release.id,
+          title: release.title,
+          artist: release.artist,
+          type: release.release_type as 'single' | 'ep' | 'album' | 'video',
+          status: normalizeStatus(release.status),
+          releaseDate: release.release_date ?? new Date().toISOString(),
+          tracks: (tracks ?? []).map(mapTrack),
+          createdAt: release.created_at ?? new Date().toISOString(),
+        });
       },
 
       listReleases: async () => {
@@ -108,24 +194,24 @@ Deno.serve(async (req) => {
           .from('music_releases')
           .select('*')
           .order('created_at', { ascending: false });
-        if (error) return { ok: false, error: new Error(error.message) } as const;
-        return { ok: true, value: (data ?? []).map(mapRelease) } as const;
+        if (error) return err(error.message);
+        return ok((data ?? []).map(mapRelease));
       },
 
       listCampaigns: async () => {
         const { data, error } = await serviceRoleDb.from('campaigns').select('*');
-        if (error) return { ok: false, error: new Error(error.message) } as const;
-        return { ok: true, value: (data ?? []).map((c: Record<string, unknown>) => ({
+        if (error) return err(error.message);
+        return ok((data ?? []).map((c: Record<string, unknown>) => ({
           id: c.id as string,
           title: c.name as string,
-          status: c.status as 'draft' | 'scheduled' | 'active' | 'ended',
+          status: c.status as string,
           startsAt: (c.start_date ?? new Date().toISOString()) as string,
           endsAt: (c.end_date ?? new Date().toISOString()) as string,
-        })) } as const;
+        })));
       },
     };
 
-    const publicationService = {
+    const publicationService: MusicPublicationService = {
       publish: async (releaseId: string) => {
         const { data, error } = await serviceRoleDb
           .from('music_releases')
@@ -133,9 +219,18 @@ Deno.serve(async (req) => {
           .eq('id', releaseId)
           .select('id, status, updated_at')
           .maybeSingle();
-        if (error) return { ok: false, error: new Error(error.message) } as const;
-        if (!data) return { ok: false, error: new Error(`Release ${releaseId} not found`) } as const;
-        return { ok: true, value: { id: data.id, status: data.status, publishedAt: data.updated_at } } as const;
+        if (error) return err(error.message);
+        if (!data) return err(`Release ${releaseId} not found`);
+        return ok({
+          id: data.id,
+          title: '',
+          artist: '',
+          type: 'single' as const,
+          status: 'published' as const,
+          releaseDate: new Date().toISOString(),
+          tracks: [],
+          createdAt: data.updated_at,
+        });
       },
       schedule: async (releaseId: string, publishAt: string) => {
         const { data, error } = await serviceRoleDb
@@ -144,13 +239,22 @@ Deno.serve(async (req) => {
           .eq('id', releaseId)
           .select('id, status, release_date')
           .maybeSingle();
-        if (error) return { ok: false, error: new Error(error.message) } as const;
-        if (!data) return { ok: false, error: new Error(`Release ${releaseId} not found`) } as const;
-        return { ok: true, value: { id: data.id, status: data.status, scheduledAt: data.release_date ?? publishAt } } as const;
+        if (error) return err(error.message);
+        if (!data) return err(`Release ${releaseId} not found`);
+        return ok({
+          id: data.id,
+          title: '',
+          artist: '',
+          type: 'single' as const,
+          status: 'scheduled' as const,
+          releaseDate: data.release_date ?? publishAt,
+          tracks: [],
+          createdAt: new Date().toISOString(),
+        });
       },
     };
 
-    const websitePublisher = {
+    const websitePublisher: WebsitePublisher = {
       publish: async (request: PublishRequest) => {
         const { data: release, error } = await serviceRoleDb
           .from('music_releases')
@@ -158,11 +262,8 @@ Deno.serve(async (req) => {
           .eq('id', request.releaseId)
           .select('slug')
           .maybeSingle();
-        if (error) return { ok: false, error: new Error(error.message) } as const;
-        if (!release) return { ok: false, error: new Error(`Release ${request.releaseId} not found`) } as const;
-
-        const baseUrl = Deno.env.get('SITE_URL') ?? '';
-        void baseUrl;
+        if (error) return err(error.message);
+        if (!release) return err(`Release ${request.releaseId} not found`);
 
         const affectedPaths: string[] = [`/releases/${release.slug}`, '/releases', '/'];
 
@@ -174,27 +275,24 @@ Deno.serve(async (req) => {
           idempotency_key: `music.release.published:${correlationId}`,
         });
 
-        return {
-          ok: true,
-          value: {
-            releaseId: request.releaseId,
-            publishedAt: new Date().toISOString(),
-            affectedPaths,
-          },
-        } as const;
+        return ok({
+          releaseId: request.releaseId,
+          publishedAt: new Date().toISOString(),
+          affectedPaths,
+        });
       },
       unpublish: async (releaseId: string) => {
         const { error } = await serviceRoleDb
           .from('music_releases')
           .update({ status: 'draft', updated_at: new Date().toISOString() })
           .eq('id', releaseId);
-        if (error) return { ok: false, error: new Error(error.message) } as const;
-        return { ok: true, value: undefined } as const;
+        if (error) return err(error.message);
+        return ok(undefined);
       },
     };
 
-    const auditWriter = {
-      record: async (event: { actor: string; action: string; resourceType: string; resourceId: string; correlationId?: string; meta?: Record<string, unknown> }) => {
+    const auditWriter: AuditEventWriter = {
+      record: async (event) => {
         const { data, error } = await serviceRoleDb
           .from('audit_logs')
           .insert({
@@ -206,25 +304,10 @@ Deno.serve(async (req) => {
           })
           .select('id, created_at')
           .single();
-        if (error) return { ok: false, error: new Error(error.message) } as const;
-        return {
-          ok: true,
-          value: {
-            ...event,
-            id: data.id,
-            ts: data.created_at,
-          },
-        } as const;
+        if (error) return err(error.message);
+        return ok({ ...event, id: data.id, ts: data.created_at });
       },
     };
-
-    const publisher = new ReleasePublisher(
-      contentReader,
-      publicationService,
-      websitePublisher,
-      auditWriter,
-      PUBLISHER_CONFIG,
-    );
 
     const publishRequest: PublishRequest = {
       releaseId: body.releaseId,
@@ -233,7 +316,7 @@ Deno.serve(async (req) => {
       correlationId,
     };
 
-    const result = await publisher.publish(ctx, publishRequest);
+    const result = await publishRelease(ctx, publishRequest, contentReader, publicationService, websitePublisher, auditWriter);
 
     return new Response(JSON.stringify({ success: true, result }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -243,6 +326,36 @@ Deno.serve(async (req) => {
     return jsonError(message, 500);
   }
 });
+
+function normalizeStatus(status: string): ReleaseRecord['status'] {
+  const valid = ['draft', 'scheduled', 'upcoming', 'published', 'archived'];
+  return (valid.includes(status) ? status : 'draft') as ReleaseRecord['status'];
+}
+
+function mapTrack(t: Record<string, unknown>): ReleaseRecord['tracks'][number] {
+  return {
+    id: String(t.id),
+    releaseId: String(t.release_id),
+    position: Number(t.position),
+    title: String(t.title),
+    durationSeconds: Number(t.duration_seconds ?? 0),
+    isrc: t.isrc as string | undefined,
+    mediaUrl: t.media_url as string | undefined,
+  };
+}
+
+function mapRelease(r: Record<string, unknown>): ReleaseRecord {
+  return {
+    id: String(r.id),
+    title: String(r.title),
+    artist: String(r.artist),
+    type: (r.release_type as ReleaseRecord['type']) ?? 'single',
+    status: normalizeStatus(String(r.status)),
+    releaseDate: (r.release_date as string) ?? new Date().toISOString(),
+    tracks: [],
+    createdAt: (r.created_at as string) ?? new Date().toISOString(),
+  };
+}
 
 function jsonError(message: string, status: number) {
   return new Response(JSON.stringify({ error: message }), {

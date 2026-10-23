@@ -1,0 +1,33 @@
+{
+  "projectId": "72312014",
+  "functions": {
+    "create-checkout": {
+      "hasChanged": false,
+      "hash": "9ba82a4f6e3166f71ac7e9bbf76458f1bc3523f7b16b3a50db93e3387080e72f"
+    },
+    "printful-webhook": {
+      "hasChanged": false,
+      "hash": "deeff1210a44ca8258e856963b505899ef9fe4691c68b0a985ca60f506d31654"
+    },
+    "publish-release": {
+      "hasChanged": false,
+      "hash": "41aee0c2adfcf43bde5bcf52b33572e9a84dfe4b3123fea2e4441264d65fbd4f"
+    },
+    "scheduler-tick": {
+      "hasChanged": false,
+      "hash": "465e872a0c8c61f1e7a471f7ae8717dac1781eaf7bb16269295326a906592b11"
+    },
+    "stripe-checkout": {
+      "hasChanged": false,
+      "hash": "1e58df1d36ab99f9719df92e6d757a56145e5cd1aff94aae275bca0b1c46b67b"
+    },
+    "stripe-webhook": {
+      "hasChanged": false,
+      "hash": "2aadd788c7b10bf5a7c41d252e7e4e1c1b49062f2616d0ae82563e80192cb459"
+    },
+    "verify-checkout": {
+      "hasChanged": false,
+      "hash": "7ef795ddfcae69d97d68a4e46ccf42373929f4f6cee299db365326bc24462ac7"
+    }
+  }
+}

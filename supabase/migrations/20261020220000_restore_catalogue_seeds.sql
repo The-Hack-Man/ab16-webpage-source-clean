@@ -97,7 +97,7 @@ INSERT INTO public.music_releases (
   'upcoming',
   'Jamie G''s new album STILL BROKEN arrives 02.12.26.',
    false,
-   '/images/albumcovers/newalbumcover.png',
+   '/images/albumcovers/newalbumcover.webp',
    'https://open.spotify.com/artist/05IDis5l8XLJKkWp7CAOcC',
   'https://music.apple.com/us/artist/jamie-g/1815382137',
   'https://www.youtube.com/channel/UCDTrDLZyf8YTXvKFTHOCkyg',
