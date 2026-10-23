@@ -1,7 +1,3 @@
--- Stripe webhook recovery: status-aware atomic event claims.
--- Additive migration: preserves the existing boolean RPC for backward compatibility.
--- Deploy this migration before deploying webhook code that calls claim_stripe_event_v2.
-
 CREATE OR REPLACE FUNCTION public.claim_stripe_event_v2(p_event_id text)
 RETURNS text
 LANGUAGE plpgsql
@@ -9,9 +5,8 @@ SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $function$
 DECLARE
-  v_status text;
-  v_locked_until timestamptz;
   v_claimed text;
+  v_status text;
 BEGIN
   IF p_event_id IS NULL OR length(trim(p_event_id)) = 0 THEN
     RAISE EXCEPTION 'Stripe event ID is required';
@@ -39,29 +34,17 @@ BEGIN
     RETURN 'claimed';
   END IF;
 
-  SELECT status, locked_until
-    INTO v_status, v_locked_until
-    FROM public.processed_stripe_events
-   WHERE stripe_event_id = p_event_id;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Could not determine Stripe event claim state';
-  END IF;
+  SELECT status INTO v_status
+  FROM public.processed_stripe_events
+  WHERE stripe_event_id = p_event_id;
 
   IF v_status = 'completed' THEN
     RETURN 'completed';
   END IF;
 
-  IF v_status = 'processing' AND v_locked_until >= now() THEN
-    RETURN 'locked';
-  END IF;
-
-  -- A failed/expired row should have been claimed above. Returning locked is
-  -- safer than falsely acknowledging an event if the state changed concurrently.
   RETURN 'locked';
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.claim_stripe_event_v2(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.claim_stripe_event_v2(text) TO service_role;
-GRANT EXECUTE ON FUNCTION public.claim_stripe_event_v2(text) TO postgres;
+REVOKE ALL ON FUNCTION public.claim_stripe_event_v2(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_stripe_event_v2(text) TO service_role, postgres;
