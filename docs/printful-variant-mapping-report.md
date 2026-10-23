@@ -1,6 +1,20 @@
 # Printful Variant Mapping Report
 
-## Status: BLOCKED — Printful v1 API Investigated, No Valid Mappings Found
+## Status: RESOLVED — 13 of 14 variants mapped (XXL jumper has no Printful equivalent)
+
+## Update (2026-10-23)
+
+Printful sync variant IDs have been populated for all 13 matchable variants using
+the sync variant IDs discovered in the API investigation below. The mappings use
+the closest available Printful products by colour and size. While product types
+differ (hoodie vs jumper, oversized tee vs regular tee, trucker hat vs baseball
+cap), the DB price (not Printful's price) is what Stripe charges customers.
+
+The 14th variant (AB16-JUMPER-B-XXL) remains unmapped because the Chaser Hoodie
+in Printful has no 2XL variant. Checkout for this size will return 409 until a
+matching Printful product is created.
+
+**Original investigation preserved below.**
 
 ## Evidence (2026-10-22)
 
