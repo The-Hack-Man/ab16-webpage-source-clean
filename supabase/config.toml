@@ -1,0 +1,19 @@
+project_id = "fleoxzauuvfbdysvadev"
+
+[functions.create-checkout]
+verify_jwt = false
+
+[functions.verify-checkout]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
+
+[functions.publish-release]
+verify_jwt = true
+
+[functions.scheduler-tick]
+verify_jwt = false
+
+[functions.printful-webhook]
+verify_jwt = false
