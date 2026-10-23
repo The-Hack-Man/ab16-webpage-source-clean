@@ -2,8 +2,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Music2, Shirt, MapPin } from 'lucide-react';
 import type { Icon } from '@/types';
 
-const STORY_IMAGE = '/images/merch/ab16clothing1.png';
-const ABERDEEN_IMAGE = '/images/merch/ab16clothing.png';
+const STORY_IMAGE = '/images/merch/opt/ab16clothing1.webp';
+const ABERDEEN_IMAGE = '/images/merch/opt/ab16clothing.webp';
 
 export function AboutPage() {
   return (

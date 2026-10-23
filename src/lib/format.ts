@@ -2,6 +2,10 @@ export function storeImageUrl(url: string | null | undefined): string | undefine
   if (!url) return undefined;
   if (url === '/images/merch/ab16clothing1.png') return '/images/merch/opt/ab16clothing1.webp';
   if (url === '/images/merch/ab16clothing.png') return '/images/merch/opt/ab16clothing.webp';
+  if (url?.startsWith('/images/merch/') && url.endsWith('.png') && !url.includes('/opt/')) {
+    const base = url.replace('/images/merch/', '').replace('.png', '');
+    return `/images/merch/opt/${base}.webp`;
+  }
   return url;
 }
 

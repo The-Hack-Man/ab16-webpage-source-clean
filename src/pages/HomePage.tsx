@@ -7,11 +7,11 @@ import { ProductCard } from '@/components/ProductCard';
 import { UpcomingAlbumBanner } from '@/components/UpcomingAlbumBanner';
 import { formatDate, timeUntil } from '@/lib/format';
 
-const HERO_IMAGE = '/images/merch/clothes2.png';
+const HERO_IMAGE = '/images/merch/clothes2.webp';
 const SPLIT_FASHION = '/images/merch/opt/ab16clothing1.webp';
-const SPLIT_MUSIC = '/images/merch/clothes3.png';
+const SPLIT_MUSIC = '/images/merch/clothes3.webp';
 const STORY_IMAGE = '/images/merch/opt/ab16clothing.webp';
-const DEFAULT_ALBUM_COVER = '/images/albumcovers/newalbumcover.png';
+const DEFAULT_ALBUM_COVER = '/images/albumcovers/newalbumcover.webp';
 
 export function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);

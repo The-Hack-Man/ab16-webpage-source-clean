@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import type { MusicRelease } from '@/types';
 import { timeUntil } from '@/lib/format';
 
-const DEFAULT_ALBUM_COVER = '/images/albumcovers/newalbumcover.png';
+const DEFAULT_ALBUM_COVER = '/images/albumcovers/newalbumcover.webp';
 
 export function UpcomingAlbumBanner({ release, dark = true }: { release: MusicRelease; dark?: boolean }) {
   const [countdown, setCountdown] = useState(timeUntil(release.release_date));
