@@ -1,0 +1,29 @@
+{
+  "name": "@ab16/engine",
+  "version": "1.0.0",
+  "description": "AB16 durable engine layer - jobs, outbox, release publishing",
+  "type": "module",
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": {
+      "types": "./index.ts",
+      "import": "./index.ts"
+    },
+    "./validation.js": "./src/validation.ts",
+    "./contracts/music.js": "./src/contracts/music.ts",
+    "./contracts/publishing.js": "./src/contracts/publishing.ts",
+    "./contracts/security.js": "./src/contracts/security.ts",
+    "./contracts/automation.js": "./src/contracts/automation.ts",
+    "./contracts/observability.js": "./src/contracts/observability.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "dev": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^2.0.0"
+  }
+}
