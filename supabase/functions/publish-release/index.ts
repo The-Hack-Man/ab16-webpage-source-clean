@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { checkAuthorization } from './auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -137,12 +138,11 @@ Deno.serve(async (req) => {
       return jsonError('Invalid or expired session', 401);
     }
 
-    const userRole = (user.app_metadata as { role?: string })?.role;
-    const isAdmin = userRole === 'admin' || userRole === 'super_admin';
-
-    if (!isAdmin) {
-      return jsonError('Administrator access required', 403);
+    const authDecision = checkAuthorization(user);
+    if (!authDecision.authorized) {
+      return jsonError(authDecision.error!, authDecision.statusCode!);
     }
+    const userRole = authDecision.role;
 
     const body: PublishBody = await req.json();
     if (!body.releaseId) {
