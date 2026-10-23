@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [security/printful-webhook-v16-admin-migrations]
+    branches: [security/printful-webhook-v16-review]
 
 jobs:
   app-checks:
