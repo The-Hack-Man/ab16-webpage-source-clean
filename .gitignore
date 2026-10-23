@@ -10,6 +10,7 @@ node_modules
 dist
 dist-ssr
 *.local
+.vite/
 
 .vscode/*
 !.vscode/extensions.json
@@ -21,3 +22,20 @@ dist-ssr
 *.sln
 *.sw?
 .env
+*.bak
+
+# Local dependencies and generated output
+node_modules/
+dist/
+build/
+coverage/
+.venv/
+venv/
+__pycache__/
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key

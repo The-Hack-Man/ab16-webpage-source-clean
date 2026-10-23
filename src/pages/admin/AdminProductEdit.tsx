@@ -298,8 +298,6 @@ export function AdminProductEdit() {
           )}
         </div>
       </div>
-
-      <style>{`.admin-input { width: 100%; border: 1px solid #e2e8f0; padding: 0.5rem 0.75rem; font-size: 0.875rem; background: white; } .admin-input:focus { outline: none; border-color: #080808; }`}</style>
     </div>
   );
 }

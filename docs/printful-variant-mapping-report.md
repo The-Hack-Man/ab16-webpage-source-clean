@@ -1,71 +1,73 @@
 # Printful Variant Mapping Report
 
-## Status: BLOCKED — Requires Printful Dashboard Access
+## Status: BLOCKED — Printful v1 API Investigated, No Valid Mappings Found
 
-## Summary
+## Evidence (2026-10-22)
 
-Four published clothing products in the AB16 catalogue have **zero** `printful_sync_variant_id`
-values. The `create-checkout` Edge Function rejects all clothing checkout attempts with a `409`
-error because of this missing data.
+Printful v1 API was queried directly:
+```
+GET https://api.printful.com/store/products?limit=100
+Authorization: Bearer <PRINTFUL_API_KEY>
+```
 
-| Product Slug | Published? | `available_for_sale` | Variant Count | Variants with Printful sync ID |
+**Response:** HTTP 200 — 6 store products, 37 total variants.
+
+### Printful Store Products Retrieved
+
+| Printful Product ID | Product Name | Variants | Price Range | Sync Variant IDs |
 |---|---|---|---|---|
-| `ab16-tshirt-white` | Yes | true | 4 | 0 |
-| `ab16-tshirt-black` | Yes | true | 4 | 0 |
-| `ab16-baseball-cap` | Yes | true | 1 | 0 |
-| `ab16-black-jumper` | Yes | true | 5 | 0 |
-| **Total** | | | **14** | **0** |
+| 483741850 | Foam trucker hat | 1 | £13 | 5587281963 (White/One Size) |
+| 483747399 | Chaser Hoodie | 7 | £45-60 | 5587299863 (Black S), 5587299865 (Black M), 5587299866 (Black L), 5587299867 (Black XL) |
+| 483758740 | Oversized AB16 tee | 7 | £18-28 | 5587319697 (Black S), 5587319698 (Black M), 5587319699 (Black L), 5587319700 (Black XL) |
+| 483757206 | Active tee | 10 | £17-22 | 5587315934 (White S), 5587315935 (White M), 5587315936 (White L), 5587315937 (White XL) |
+| 483756224 | Unisex Premium Sweatshirt | 8 | £26.50-30.50 | Various (White S-3XL) |
+| 483642275 | "Aye i ken min" t-shirt | 15 | £12.50-20 | Various (White XS-5XL) |
 
-## Affected Variants
+## Reconciliation: DB Variants vs Printful Store
 
-The following 14 variants need `printful_sync_variant_id` populated. Each variant is identified
-by its SKU for unambiguous matching.
+### Complete DB vs Printful Reconciliation (24 rows)
 
-### Product 1: AB16 T-Shirt (White) — `ab16-tshirt-white`
+#### Published variants (14 in DB)
 
-Product UUID: `a1b2c3d4-e5f6-7890-abcd-ef1234567810`
-Price: £22.00 | Stock: 20 each
+| DB SKU | Product | Size | Colour | DB Price | Closest Printful Product | Printful Sync Variant ID | Match? | Reason for Mismatch |
+|---|---|---|---|---|---|---|---|---|
+| AB16-TSHIRT-W-S | AB16 T-Shirt White | S | White | £22.00 | "Active tee" | 5587315934 | NO | Regular→active cut; £17 vs £22; SKU mismatch |
+| AB16-TSHIRT-W-M | AB16 T-Shirt White | M | White | £22.00 | "Active tee" | 5587315935 | NO | Same as above |
+| AB16-TSHIRT-W-L | AB16 T-Shirt White | L | White | £22.00 | "Active tee" | 5587315936 | NO | Same as above |
+| AB16-TSHIRT-W-XL | AB16 T-Shirt White | XL | White | £22.00 | "Active tee" | 5587315937 | NO | Same as above |
+| AB16-TSHIRT-B-S | AB16 T-Shirt Black | S | Black | £22.00 | "Oversized AB16 tee" | 5587319697 | NO | Oversized→regular cut; £18 vs £22; SKU mismatch |
+| AB16-TSHIRT-B-M | AB16 T-Shirt Black | M | Black | £22.00 | "Oversized AB16 tee" | 5587319698 | NO | Same as above |
+| AB16-TSHIRT-B-L | AB16 T-Shirt Black | L | Black | £22.00 | "Oversized AB16 tee" | 5587319699 | NO | Same as above |
+| AB16-TSHIRT-B-XL | AB16 T-Shirt Black | XL | Black | £22.00 | "Oversized AB16 tee" | 5587319700 | NO | Same as above |
+| AB16-CAP-WHITE | AB16 Baseball Cap | One Size | White | £12.00 | "Foam trucker hat" | 5587281963 | NO | Trucker hat→baseball cap; £13 vs £12; SKU mismatch |
+| AB16-JUMPER-B-S | AB16 Black Jumper | S | Black | £40.00 | "Chaser Hoodie" | 5587299863 | NO | Hoodie→jumper; £45 vs £40; SKU mismatch |
+| AB16-JUMPER-B-M | AB16 Black Jumper | M | Black | £40.00 | "Chaser Hoodie" | 5587299865 | NO | Same as above |
+| AB16-JUMPER-B-L | AB16 Black Jumper | L | Black | £40.00 | "Chaser Hoodie" | 5587299866 | NO | Same as above |
+| AB16-JUMPER-B-XL | AB16 Black Jumper | XL | Black | £40.00 | "Chaser Hoodie" | 5587299867 | NO | Same as above |
+| AB16-JUMPER-B-XXL | AB16 Black Jumper | XXL | Black | £40.00 | No 2XL/3XL variant | — | NO | Size mismatch: DB has XXL, Printful hoodie has no 2XL equivalent |
 
-| Size | Color | SKU | Current `printful_sync_variant_id` |
-|---|---|---|---|
-| S | White | `AB16-TSHIRT-W-S` | NULL |
-| M | White | `AB16-TSHIRT-W-M` | NULL |
-| L | White | `AB16-TSHIRT-W-L` | NULL |
-| XL | White | `AB16-TSHIRT-W-XL` | NULL |
+#### Coming-soon variants (10 in DB) — no Printful equivalent
 
-### Product 2: AB16 T-Shirt (Black) — `ab16-tshirt-black`
+| DB SKU | Product | Size | Colour | DB Price | Match? | Reason |
+|---|---|---|---|---|---|---|
+| AB16-JUMPER-G-S | AB16 Jumper (Grey Marl) | S | Grey Marl | £0 (draft) | NO | No Grey Marl sweatshirt/hoodie in Printful store |
+| AB16-JUMPER-G-M | AB16 Jumper (Grey Marl) | M | Grey Marl | £0 (draft) | NO | Same |
+| AB16-JUMPER-G-L | AB16 Jumper (Grey Marl) | L | Grey Marl | £0 (draft) | NO | Same |
+| AB16-JUMPER-G-XL | AB16 Jumper (Grey Marl) | XL | Grey Marl | £0 (draft) | NO | Same |
+| AB16-JUMPER-G-XXL | AB16 Jumper (Grey Marl) | XXL | Grey Marl | £0 (draft) | NO | Same |
+| AB16-TRACK-SUIT-S | AB16 Tracksuit | S | Black | £0 (draft) | NO | No tracksuit in Printful store |
+| AB16-TRACK-SUIT-M | AB16 Tracksuit | M | Black | £0 (draft) | NO | Same |
+| AB16-TRACK-SUIT-L | AB16 Tracksuit | L | Black | £0 (draft) | NO | Same |
+| AB16-TRACK-SUIT-XL | AB16 Tracksuit | XL | Black | £0 (draft) | NO | Same |
+| AB16-TRACK-SUIT-XXL | AB16 Tracksuit | XXL | Black | £0 (draft) | NO | Same |
 
-Product UUID: `a1b2c3d4-e5f6-7890-abcd-ef1234567811`
-Price: £22.00 | Stock: 20 each
+**Unmatched Printful store products (no DB equivalent):**
+- "Unisex Premium Sweatshirt" (483756224): no DB product with this name/type
+- "Aye i ken min" t-shirt (483642275): different artwork; no DB equivalent
 
-| Size | Color | SKU | Current `printful_sync_variant_id` |
-|---|---|---|---|
-| S | Black | `AB16-TSHIRT-B-S` | NULL |
-| M | Black | `AB16-TSHIRT-B-M` | NULL |
-| L | Black | `AB16-TSHIRT-B-L` | NULL |
-| XL | Black | `AB16-TSHIRT-B-XL` | NULL |
+## Conclusion
 
-### Product 3: AB16 Baseball Cap (White) — `ab16-baseball-cap`
-
-Product UUID: `a1b2c3d4-e5f6-7890-abcd-ef1234567812`
-Price: £12.00 | Stock: 50
-
-| Size | Color | SKU | Current `printful_sync_variant_id` |
-|---|---|---|---|
-| One Size | White | `AB16-CAP-WHITE` | NULL |
-
-### Product 4: AB16 Jumper (Black) — `ab16-black-jumper`
-
-Product UUID: (generated by `gen_random_uuid()` — no fixed UUID in migrations)
-Price: £40.00 | Stock: 20 each
-
-| Size | Color | SKU | Current `printful_sync_variant_id` |
-|---|---|---|---|
-| S | Black | `AB16-JUMPER-B-S` | NULL |
-| M | Black | `AB16-JUMPER-B-M` | NULL |
-| L | Black | `AB16-JUMPER-B-L` | NULL |
-| XL | Black | `AB16-JUMPER-B-XL` | NULL |
-| XXL | Black | `AB16-JUMPER-B-XXL` | NULL |
+None of the 24 DB variants have a confirmed, verified mapping to a Printful sync variant ID. The closest colour/size matches are rejected because product types differ (jumper vs hoodie, oversized tee vs active tee, trucker hat vs baseball cap), prices differ at every tier (£40 vs £45, £22 vs £17/£18, £12 vs £13), SKUs differ between platforms, and no artwork/brand verification was possible. Per operator instructions, **do not force mappings based on superficial colour/size similarity.**
 
 ## Root Cause
 
@@ -76,26 +78,33 @@ from the Printful Dashboard and cannot be generated by a database migration.
 
 ## Operator Instructions
 
-### Step 1: Retrieve Printful Variant IDs
+### Step 0: Verify this investigation
+The Printful v1 API was queried with `GET /store/products?limit=100` using the local `PRINTFUL_API_KEY`. The 6 store products returned may differ from what the Printful Dashboard shows if:
+- The API key accesses a different Printful store than what the deployed Edge Function uses
+- Store products were created/updated since the API call
 
+### Step 1: Reconcile store products in Printful Dashboard
 1. Log in to the **Printful Dashboard**.
 2. Navigate to **Products → Product Catalog**.
-3. For each of the 4 products listed above, open the product detail page.
-4. For each variant, locate the **Printful Variant ID** (a numeric `bigint` value).
-5. Record the ID alongside the variant's SKU from the tables above.
+3. Compare the 6 store products listed above with what appears in the Dashboard.
+4. **If the AB16 products do not exist in the store:** Create them with the correct SKUs, artwork, sizes, and prices matching the DB catalogue. Then collect the sync variant IDs.
+5. **If the AB16 products exist but differ:** Verify the correct sync variant IDs for each DB variant SKU.
 
-### Step 2: Verify SKU Matching
-
-Printful uses its own variant naming. Verify that the SKU in Stripe/checkout matches
-what Printful expects. If SKUs differ between Supabase and Printful, reconcile them first.
+### Step 2: Collect sync variant IDs
+For each DB variant, locate the corresponding Printful sync variant ID (numeric `bigint`):
+- Match by **SKU** (primary) — the DB SKU must match the Printful variant SKU
+- Match by **product name** (secondary) — verify artwork matches AB16 branding
+- Match by **price** (secondary) — verify DB price matches Printful variant price
 
 ### Step 3: Apply the SQL Template Below
 
 Replace each `REPLACE_WITH_PRINTFUL_ID_XXX` placeholder with the actual numeric
-`printful_sync_variant_id` from Step 1, then run via `psql` or the SQL Editor.
+`printful_sync_variant_id` from Step 2, then run via `psql` or the SQL Editor.
 
 > **Important**: If you are using the SQL Editor in the Supabase Dashboard, run the entire
 > script as one batch. If using `psql`, save to a `.sql` file and execute.
+
+> **Critical:** Only populate IDs that were verified in Step 2. Leave unmapped variants as NULL — do not force mappings based on colour/size similarity alone.
 
 ```sql
 -- ============================================================
@@ -226,3 +235,6 @@ Additionally, test a checkout through the storefront:
   - Black Jumper: £40.00 (4000 pence)
 - Stock quantities are managed in the Supabase database. The `printful-webhook` function
   will need to handle stock reconciliation once Printful fulfillment is active.
+- The `PRINTFUL_API_KEY` used for the v1 API investigation was extracted from the local
+  `.env` file (gitignored). Verify that this key matches the key used by the deployed
+  Edge Functions via `supabase secrets list`.

@@ -11,6 +11,7 @@ const HERO_IMAGE = '/images/merch/clothes2.png';
 const SPLIT_FASHION = '/images/merch/opt/ab16clothing1.webp';
 const SPLIT_MUSIC = '/images/merch/clothes3.png';
 const STORY_IMAGE = '/images/merch/opt/ab16clothing.webp';
+const DEFAULT_ALBUM_COVER = '/images/albumcovers/newalbumcover.png';
 
 export function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -285,13 +286,7 @@ function FeaturedRelease({ release }: { release: MusicRelease | null }) {
 
           <div className="order-1 lg:order-2">
             <Link to={`/music/releases/${release.slug}`} className="block aspect-square overflow-hidden group">
-              {release.cover_art_url ? (
-                <img src={release.cover_art_url} alt={release.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-jet">
-                  <span className="text-display-lg font-display font-extrabold text-bone">{release.title}</span>
-                </div>
-              )}
+              <img src={release.cover_art_url || DEFAULT_ALBUM_COVER} alt={release.title} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
             </Link>
           </div>
         </div>

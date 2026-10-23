@@ -11,12 +11,11 @@ import {
   renderAudio, type MasteringSettings, type AudioAnalysis, type PresetConfig,
   type ExportFormat,
 } from '@/lib/masteringEngine';
-import { cn, formatLUFS, formatDb, formatDuration } from '@/lib/utils';
+import { cn, formatLUFS, formatDb, formatDuration, MAX_UPLOAD_BYTES, formatBytes } from '@/lib/utils';
 import SpectrumAnalyzer from '@/components/SpectrumAnalyzer';
 import { Link } from 'react-router-dom';
 
 const DEMO_DURATION = 30;
-const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 const MAX_TRACK_DURATION = 15 * 60;
 const EQ_LABELS = ['SUB', 'LOW', 'LO-MID', 'MID', 'PRES', 'HIGH', 'AIR'];
 
@@ -71,7 +70,7 @@ export function MasterPage() {
 
     try {
       if (!file.type.startsWith('audio/')) throw new Error('Please upload an audio file (WAV, FLAC, or MP3).');
-      if (file.size > MAX_UPLOAD_BYTES) throw new Error('File exceeds the 100 MB limit. Please export a smaller compressed audio file.');
+      if (file.size > MAX_UPLOAD_BYTES) throw new Error(`File exceeds ${formatBytes(MAX_UPLOAD_BYTES)} limit. Please export a smaller compressed audio file.`);
 
       const ctx = getAudioContext();
       const buffer = await decodeAudioFile(file, ctx);
@@ -992,7 +991,7 @@ function DropZone({ onDrop, disabled }: { onDrop: (files: File[]) => void; disab
         <UploadCloud className="w-7 h-7 text-studio-accent" />
       </div>
       <p className="text-sm font-medium text-studio-text">Drop your track here or click to browse</p>
-      <p className="text-xs text-studio-textMuted mt-1">WAV, FLAC, or MP3 — up to 100 MB and 15 minutes · free 30-second preview</p>
+      <p className="text-xs text-studio-textMuted mt-1">WAV, FLAC, or MP3 — up to {formatBytes(MAX_UPLOAD_BYTES)} and 15 minutes · free 30-second preview</p>
       <input
         ref={inputRef}
         type="file"

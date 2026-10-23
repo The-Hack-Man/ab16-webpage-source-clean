@@ -66,8 +66,8 @@ describe('InMemoryEventDispatcher', () => {
   it('supports multiple handlers for same type', async () => {
     const dispatcher = new InMemoryEventDispatcher();
     const calls: string[] = [];
-    dispatcher.register({ type: 'test', handle: async () => calls.push('a') });
-    dispatcher.register({ type: 'test', handle: async () => calls.push('b') });
+    dispatcher.register({ type: 'test', handle: async () => { calls.push('a'); } });
+    dispatcher.register({ type: 'test', handle: async () => { calls.push('b'); } });
     await dispatcher.dispatch(buildEvent('test', {}));
     expect(calls).toEqual(['a', 'b']);
   });
@@ -75,8 +75,8 @@ describe('InMemoryEventDispatcher', () => {
   it('supports multiple event types', async () => {
     const dispatcher = new InMemoryEventDispatcher();
     const calls: string[] = [];
-    dispatcher.register({ type: 'a', handle: async () => calls.push('a') });
-    dispatcher.register({ type: 'b', handle: async () => calls.push('b') });
+    dispatcher.register({ type: 'a', handle: async () => { calls.push('a'); } });
+    dispatcher.register({ type: 'b', handle: async () => { calls.push('b'); } });
     await dispatcher.dispatch(buildEvent('a', {}));
     await dispatcher.dispatch(buildEvent('b', {}));
     expect(calls).toEqual(['a', 'b']);

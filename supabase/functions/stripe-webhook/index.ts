@@ -5,12 +5,14 @@ import {
   checkExpiredPaymentIdempotency,
   checkExpiredPaymentRecordIdempotency,
   checkMasteringCreditIdempotency,
+  describeClaimOutcome,
+  isPrintfulConfirmedButUnreconciled,
   type OrderRecord,
   type PaymentRecord,
 } from './idempotency.ts';
 
 const corsHeaders = {
-  'AccessControl-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, stripe-signature',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
@@ -21,6 +23,7 @@ type StoreOrder = {
   email: string;
   total: number;
   payment_status: string;
+  fulfilment_status: string | null;
   shipping_address: Record<string, string | null> | null;
   owner_order_notified_at: string | null;
 };
@@ -103,31 +106,51 @@ Deno.serve(async (req) => {
   });
 
   // ── Event-level idempotency: atomically claim the Stripe event ID ────────
-  // claim_stripe_event returns true if this worker owns the event, false if
-  // it was already completed or is currently locked by another worker.
-  const { data: claimed, error: claimError } = await supabase.rpc('claim_stripe_event', {
+  // claim_stripe_event_v2 returns 'claimed', 'completed', or 'locked'.
+  // - 'completed': a previous worker already finished — acknowledge (200).
+  // - 'locked': another worker holds the 5-minute claim — return 500 so Stripe
+  //   retries; the lock auto-expires if that worker crashes.
+  // - 'claimed': this worker owns the event — proceed with processing.
+  const { data: claimOutcome, error: claimError } = await supabase.rpc('claim_stripe_event_v2', {
     p_event_id: event.id,
-  });
+  }) as { data: 'claimed' | 'completed' | 'locked' | null; error: { message?: string } | null };
 
   if (claimError) {
     console.error('Could not claim Stripe event for deduplication:', claimError);
     return json({ error: 'Internal error during event claiming.' }, 500);
   }
 
-  // Already completed/locked by a previous worker — acknowledge without reprocessing
-  if (!claimed) {
-    return json({ received: true, skipped: true, reason: 'already_processed' });
+  if (claimOutcome === 'completed') {
+    return json({ received: true, skipped: true, reason: describeClaimOutcome('completed') });
   }
+
+  if (claimOutcome === 'locked') {
+    console.warn(`Stripe event ${event.id} is locked by another worker; Stripe will retry.`);
+    return json({ received: true, skipped: true, reason: describeClaimOutcome('locked') }, 500);
+  }
+
+  // claimOutcome === 'claimed' — proceed with processing
 
   try {
     await processStripeEvent(supabase, stripe, event);
 
-    // Mark the event as completed only after all business logic succeeded
+     // Mark the event as completed only after all business logic succeeded
     const { error: markCompletedError } = await supabase.rpc('mark_stripe_event_completed', {
       p_event_id: event.id,
     });
     if (markCompletedError) {
       console.error('Could not mark Stripe event as completed:', markCompletedError);
+      // The event remains 'processing' with a 5-minute claim lock.
+      // Attempt to mark it as failed so Stripe can redeliver and another
+      // worker can pick it up after the lock expires.
+      const { error: markFailedError } = await supabase.rpc('mark_stripe_event_failed', {
+        p_event_id: event.id,
+        p_error: `mark_stripe_event_completed failed: ${markCompletedError.message?.slice(0, 500)}`,
+      });
+      if (markFailedError) {
+        console.error('Could not mark Stripe event as failed after completion failure:', markFailedError);
+      }
+      return json({ error: 'Processing succeeded but event state could not be persisted.', retry: true }, 500);
     }
 
     return json({ received: true });
@@ -256,7 +279,7 @@ async function processClothingOrder(
 ) {
   const { data: order, error: orderError } = await supabase
     .from('orders')
-    .select('id, order_number, email, total, payment_status, shipping_address, owner_order_notified_at')
+    .select('id, order_number, email, total, payment_status, fulfilment_status, shipping_address, owner_order_notified_at')
     .eq('id', orderId)
     .maybeSingle();
 
@@ -284,16 +307,18 @@ async function processClothingOrder(
   }
 
   if (storeOrder.payment_status !== 'paid') {
-    const { error } = await supabase
+    const { data: updatedOrder, error: updateError } = await supabase
       .from('orders')
       .update({
         payment_status: 'paid',
         payment_intent_id: session.payment_intent ? String(session.payment_intent) : session.id,
       })
       .eq('id', orderId)
-      .eq('payment_status', 'pending');
-    if (error) {
-      // Another worker may have already marked it paid — verify
+      .eq('payment_status', 'pending')
+      .select('payment_status')
+      .maybeSingle();
+    if (updateError) {
+      console.error('Could not mark order as paid:', updateError);
       const { data: recheck, error: recheckError } = await supabase
         .from('orders')
         .select('payment_status')
@@ -302,6 +327,18 @@ async function processClothingOrder(
       if (recheckError || recheck?.payment_status !== 'paid') {
         throw new Error('Could not mark the paid clothing order as paid.');
       }
+    }
+    if (!updatedOrder) {
+      // No row was updated — another worker may have already marked it paid
+      const { data: recheck, error: recheckError } = await supabase
+        .from('orders')
+        .select('payment_status')
+        .eq('id', orderId)
+        .maybeSingle();
+      if (recheckError || recheck?.payment_status !== 'paid') {
+        throw new Error('Could not mark the paid clothing order as paid.');
+      }
+      storeOrder.payment_status = 'paid';
     }
   }
 
@@ -315,11 +352,13 @@ async function processClothingOrder(
   }
   const orderItems = items as StoreOrderItem[];
 
-  const variantIds = [...new Set(orderItems.map((item) => item.variant_id).filter((id): id is string => Boolean(id)))];
-  if (variantIds.length !== orderItems.length) {
+  const missingVariantItems = orderItems.filter((item) => !item.variant_id);
+  if (missingVariantItems.length > 0) {
     await notifyOwner(supabase, storeOrder, orderItems, 'Printful needs manual review: a purchased item has no product variant mapping.');
     throw new Error(`Clothing order ${storeOrder.order_number} contains an item without a variant.`);
   }
+
+  const variantIds = [...new Set(orderItems.map((item) => item.variant_id).filter((id): id is string => Boolean(id)))];
 
   const { data: variants, error: variantError } = await supabase
     .from('product_variants')
@@ -410,7 +449,22 @@ async function submitPrintfulOrder(
     .eq('order_id', order.id)
     .maybeSingle();
   if (existingError) throw new Error('Could not load Printful order state.');
-  if (existing?.confirmed_at) return 'Printful accepted the clothing order for fulfilment.';
+  if (existing?.confirmed_at) {
+    // Reconcile: if Printful already confirmed but store order isn't marked fulfilled, do so now.
+    if (isPrintfulConfirmedButUnreconciled(existing, order)) {
+      const { error: reconcileError } = await supabase
+        .from('orders')
+        .update({ fulfilment_status: 'fulfilled' })
+        .eq('id', order.id);
+      if (reconcileError) {
+        throw new Error(
+          'Printful already confirmed the order, but the store fulfilment_status could not be reconciled.',
+        );
+      }
+      order.fulfilment_status = 'fulfilled';
+    }
+    return 'Printful accepted the clothing order for fulfilment.';
+  }
 
   let fulfillmentRowId = existing?.id as string | undefined;
   if (existing) {

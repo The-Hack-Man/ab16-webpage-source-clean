@@ -7,6 +7,7 @@ export function AdminSettings() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -17,24 +18,37 @@ export function AdminSettings() {
 
   const save = async () => {
     setSaving(true);
-    if (settings?.id) {
-      await supabase.from('site_settings').update({
-        website_url: settings.website_url, business_name: settings.business_name, contact_email: settings.contact_email,
-        support_email: settings.support_email, currency: settings.currency,
-        store_address: settings.store_address, instagram_url: settings.instagram_url,
-        tiktok_url: settings.tiktok_url, youtube_url: settings.youtube_url,
-        spotify_url: settings.spotify_url, apple_music_url: settings.apple_music_url, amazon_music_url: settings.amazon_music_url,
-        facebook_url: settings.facebook_url, announcement_text: settings.announcement_text,
-        announcement_active: settings.announcement_active, hero_headline: settings.hero_headline,
-        hero_subtext: settings.hero_subtext, hero_image_url: settings.hero_image_url,
-        maintenance_mode: settings.maintenance_mode,
-      }).eq('id', settings.id);
-    } else if (settings) {
-      await supabase.from('site_settings').insert(settings);
+    setSaveError(null);
+    setSaved(false);
+    try {
+      if (settings?.id) {
+        const { error } = await supabase.from('site_settings').update({
+          website_url: settings.website_url, business_name: settings.business_name, contact_email: settings.contact_email,
+          support_email: settings.support_email, currency: settings.currency,
+          store_address: settings.store_address, instagram_url: settings.instagram_url,
+          tiktok_url: settings.tiktok_url, youtube_url: settings.youtube_url,
+          spotify_url: settings.spotify_url, apple_music_url: settings.apple_music_url,
+          amazon_music_url: settings.amazon_music_url, facebook_url: settings.facebook_url,
+          announcement_text: settings.announcement_text,
+          announcement_active: settings.announcement_active, hero_headline: settings.hero_headline,
+          hero_subtext: settings.hero_subtext, hero_image_url: settings.hero_image_url,
+          hero_video_url: settings.hero_video_url,
+          maintenance_mode: settings.maintenance_mode,
+        }).eq('id', settings.id);
+        if (error) throw error;
+      } else if (settings) {
+        const { error } = await supabase.from('site_settings').insert(settings);
+        if (error) throw error;
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      const msg = err as { message?: string };
+      setSaveError(msg?.message ?? 'Failed to save settings — check the console for details');
+      console.error('Settings save error:', err);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
   };
 
   if (!settings) return <div className="h-32 bg-white animate-pulse rounded" />;
@@ -46,6 +60,11 @@ export function AdminSettings() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Settings</h1>
         <button onClick={save} disabled={saving} className="btn-primary">{saving ? 'Saving…' : saved ? 'Saved!' : <><Save size={14} /> Save Settings</>}</button>
+        {saveError && (
+          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+            {saveError}
+          </div>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -72,6 +91,7 @@ export function AdminSettings() {
           <Field label="Hero Headline"><textarea value={settings.hero_headline ?? ''} onChange={(e) => set('hero_headline', e.target.value)} rows={2} className="admin-input resize-none" /></Field>
           <Field label="Hero Subtext"><textarea value={settings.hero_subtext ?? ''} onChange={(e) => set('hero_subtext', e.target.value)} rows={2} className="admin-input resize-none" /></Field>
           <Field label="Hero Image URL"><input value={settings.hero_image_url ?? ''} onChange={(e) => set('hero_image_url', e.target.value)} className="admin-input" /></Field>
+          <Field label="Hero Video URL"><input value={settings.hero_video_url ?? ''} onChange={(e) => set('hero_video_url', e.target.value)} className="admin-input" placeholder="https://…" /></Field>
         </Section>
 
         <Section title="Announcement Bar">
@@ -128,7 +148,7 @@ export function AdminSettings() {
               if (!orderNum) return;
               const { data, error } = await supabase
                 .from('orders')
-                .select('id, order_number, total, payment_status, fulfilment_status')
+                 .select('id, order_number, total, payment_status, fulfilment_status, payment_intent_id')
                 .eq('order_number', orderNum.toUpperCase())
                 .maybeSingle();
               if (error || !data) {
@@ -140,7 +160,7 @@ export function AdminSettings() {
                 `Total: £${(data.total / 100).toFixed(2)}\n` +
                 `Payment: ${data.payment_status}\n` +
                 `Fulfilment: ${data.fulfilment_status}\n` +
-                `Payment Intent: ${data.payment_status}`
+                 `Payment Intent: ${data.payment_intent_id ?? 'N/A'}`
               );
             }}
             className="flex items-center justify-center gap-2 px-4 py-2 text-sm border border-slate-200 rounded hover:bg-slate-50"
@@ -153,8 +173,6 @@ export function AdminSettings() {
           <Toggle label="Maintenance Mode (hides the storefront)" checked={settings.maintenance_mode ?? false} onChange={(v) => set('maintenance_mode', v)} />
         </Section>
       </div>
-
-      <style>{`.admin-input { width: 100%; border: 1px solid #e2e8f0; padding: 0.5rem 0.75rem; font-size: 0.875rem; background: white; } .admin-input:focus { outline: none; border-color: #080808; }`}</style>
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   checkExpiredPaymentRecordIdempotency,
   checkPrintfulSubmissionIdempotency,
   describeClaimOutcome,
+  isPrintfulConfirmedButUnreconciled,
 } from './idempotency';
 import type { OrderRecord, PaymentRecord, PrintfulOrder } from './idempotency';
 
@@ -36,6 +37,7 @@ function makeOrder(overrides: Partial<OrderRecord> = {}): OrderRecord {
     total: 2200,
     payment_status: 'pending',
     payment_intent_id: null,
+    fulfilment_status: null,
     owner_order_notified_at: null,
     ...overrides,
   };
@@ -71,12 +73,28 @@ describe('isPaidCheckoutSession', () => {
 });
 
 describe('isFulfillableOrder', () => {
-  it('returns true when order is pending (not yet paid)', () => {
-    expect(isFulfillableOrder(makeOrder({ payment_status: 'pending' }))).toBe(true);
+  it('returns true when order is paid but not yet fulfilled', () => {
+    expect(isFulfillableOrder(makeOrder({ payment_status: 'paid', fulfilment_status: 'unfulfilled' }))).toBe(true);
   });
 
-  it('returns false when order is already paid', () => {
-    expect(isFulfillableOrder(makeOrder({ payment_status: 'paid' }))).toBe(false);
+  it('returns true when order is paid and fulfilment_status is null', () => {
+    expect(isFulfillableOrder(makeOrder({ payment_status: 'paid', fulfilment_status: null }))).toBe(true);
+  });
+
+  it('returns false when order is pending (not yet paid)', () => {
+    expect(isFulfillableOrder(makeOrder({ payment_status: 'pending' }))).toBe(false);
+  });
+
+  it('returns false when order is already paid and fulfilled', () => {
+    expect(isFulfillableOrder(makeOrder({ payment_status: 'paid', fulfilment_status: 'fulfilled' }))).toBe(false);
+  });
+
+  it('returns false when order is refunded', () => {
+    expect(isFulfillableOrder(makeOrder({ payment_status: 'refunded' }))).toBe(false);
+  });
+
+  it('returns false when order is failed', () => {
+    expect(isFulfillableOrder(makeOrder({ payment_status: 'failed' }))).toBe(false);
   });
 });
 
@@ -139,10 +157,22 @@ describe('checkClothingOrderIdempotency', () => {
     expect(result.reason).toBe('ok');
   });
 
-  it('skips processing when order is already paid (duplicate event)', () => {
-    const result = checkClothingOrderIdempotency(makeOrder({ payment_status: 'paid' }), makeSession());
+  it('allows processing when order is paid but not yet fulfilled (retry path)', () => {
+    const result = checkClothingOrderIdempotency(
+      makeOrder({ payment_status: 'paid', fulfilment_status: 'unfulfilled' }),
+      makeSession(),
+    );
+    expect(result.shouldProcess).toBe(true);
+    expect(result.reason).toBe('ok');
+  });
+
+  it('skips processing when order is already paid AND fulfilled', () => {
+    const result = checkClothingOrderIdempotency(
+      makeOrder({ payment_status: 'paid', fulfilment_status: 'fulfilled' }),
+      makeSession(),
+    );
     expect(result.shouldProcess).toBe(false);
-    expect(result.reason).toBe('order_already_paid');
+    expect(result.reason).toBe('order_already_paid_and_fulfilled');
   });
 
   it('skips processing when currency does not match', () => {
@@ -248,17 +278,28 @@ describe('checkPrintfulSubmissionIdempotency', () => {
 });
 
 describe('Repeated event ID simulation', () => {
-  it('duplicate checkout.session.completed for clothing: second event sees order already paid', () => {
-    const order = makeOrder({ payment_status: 'paid' });
+  it('duplicate checkout.session.completed for a fully-paid-and-fulfilled clothing order is skipped', () => {
     const session = makeSession();
-
+    const order = makeOrder({ payment_status: 'pending' });
     const first = checkClothingOrderIdempotency(order, session);
-    expect(first.shouldProcess).toBe(false);
+    expect(first.shouldProcess).toBe(true);
 
-    const paidOrder: OrderRecord = { ...order, payment_status: 'paid' };
-    const second = checkClothingOrderIdempotency(paidOrder, session);
+    const fullyProcessed: OrderRecord = { ...order, payment_status: 'paid', fulfilment_status: 'fulfilled' };
+    const second = checkClothingOrderIdempotency(fullyProcessed, session);
     expect(second.shouldProcess).toBe(false);
-    expect(second.reason).toBe('order_already_paid');
+    expect(second.reason).toBe('order_already_paid_and_fulfilled');
+  });
+
+  it('duplicate checkout.session.completed for a paid-but-unfulfilled order still allows Printful retry', () => {
+    const session = makeSession();
+    const order = makeOrder({ payment_status: 'pending' });
+    const first = checkClothingOrderIdempotency(order, session);
+    expect(first.shouldProcess).toBe(true);
+
+    const paidButUnfulfilled: OrderRecord = { ...order, payment_status: 'paid', fulfilment_status: 'unfulfilled' };
+    const second = checkClothingOrderIdempotency(paidButUnfulfilled, session);
+    expect(second.shouldProcess).toBe(true);
+    expect(second.reason).toBe('ok');
   });
 
   it('duplicate checkout.session.completed for credit grant: second event sees payment already paid', () => {
@@ -282,13 +323,13 @@ describe('Repeated event ID simulation', () => {
 
 describe('Concurrent and failure scenarios', () => {
   describe('Duplicate completed events', () => {
-    it('second checkout.session.completed for a paid order is a no-op', () => {
+    it('second checkout.session.completed for a paid-and-fulfilled order is a no-op', () => {
       const session = makeSession();
-      const paidOrder = makeOrder({ payment_status: 'paid' });
+      const paidOrder = makeOrder({ payment_status: 'paid', fulfilment_status: 'fulfilled' });
 
       const check = checkClothingOrderIdempotency(paidOrder, session);
       expect(check.shouldProcess).toBe(false);
-      expect(check.reason).toBe('order_already_paid');
+      expect(check.reason).toBe('order_already_paid_and_fulfilled');
     });
 
     it('second credit grant for a paid record is a no-op', () => {
@@ -307,9 +348,10 @@ describe('Concurrent and failure scenarios', () => {
       expect(workerA.shouldProcess).toBe(true);
 
       // Worker B processes the same event but the order is now paid
-      const workerB = checkClothingOrderIdempotency(makeOrder({ payment_status: 'paid' }), session);
-      expect(workerB.shouldProcess).toBe(false);
-      expect(workerB.reason).toBe('order_already_paid');
+      // (but not yet fulfilled — Printful submission still needs to happen)
+      const workerB = checkClothingOrderIdempotency(makeOrder({ payment_status: 'paid', fulfilment_status: 'unfulfilled' }), session);
+      expect(workerB.shouldProcess).toBe(true);
+      expect(workerB.reason).toBe('ok');
     });
 
     it('two workers for the same mastering credit: first grants, second skips', () => {
@@ -336,15 +378,13 @@ describe('Concurrent and failure scenarios', () => {
   });
 
   describe('Payment succeeded but database update failed', () => {
-    it('if the order payment_status update returns 0 rows (race), the order is already paid', () => {
-      // Simulate: worker A updated payment_status to 'paid' but got a DB error after.
-      // Worker B sees the order is already paid and skips.
+    it('if the order payment_status update returns 0 rows (race), the order is already paid — but Printful retry still allowed if unfulfilled', () => {
       const session = makeSession();
-      const orderAfterUpdate = makeOrder({ payment_status: 'paid' });
+      const orderAfterUpdate = makeOrder({ payment_status: 'paid', fulfilment_status: 'unfulfilled' });
 
       const check = checkClothingOrderIdempotency(orderAfterUpdate, session);
-      expect(check.shouldProcess).toBe(false);
-      expect(check.reason).toBe('order_already_paid');
+      expect(check.shouldProcess).toBe(true);
+      expect(check.reason).toBe('ok');
     });
 
     it('if the payment record status update returns 0 rows (race), the record is already paid', () => {
@@ -454,31 +494,77 @@ describe('Concurrent and failure scenarios', () => {
       expect(canSendOwnerNotification(notNotified)).toBe(true);
     });
   });
+});
 
 describe('Missing and invalid Printful mappings', () => {
-  it('buildLineItems skips unmapped variants with 409', () => {
-    // This test verifies the behaviour in checkout_validation.ts
-    // which is tested separately with 23 dedicated tests.
-    // Here we verify the idempotency perspective: a null mapping is detected.
-    expect(null).toBeNull();
+  it('checkPrintfulSubmissionIdempotency treats a failed submission (null mapping) as retryable', () => {
+    const printfulOrder = makePrintfulOrder({
+      status: 'failed',
+      confirmed_at: null,
+    });
+    const check = checkPrintfulSubmissionIdempotency(printfulOrder);
+    expect(check.shouldProcess).toBe(true);
+    expect(check.reason).toBe('ok');
+  });
+
+  it('after a failed Printful submission, a duplicate event still allows Printful retry (paid but unfulfilled)', () => {
+    const session = makeSession();
+    const paidOrder = makeOrder({ payment_status: 'paid', fulfilment_status: 'unfulfilled' });
+    const duplicateCheck = checkClothingOrderIdempotency(paidOrder, session);
+    expect(duplicateCheck.shouldProcess).toBe(true);
+    expect(duplicateCheck.reason).toBe('ok');
   });
 });
 
-describe('claim_stripe_event boolean semantics', () => {
+describe('claim_stripe_event_v2 outcome semantics', () => {
   it('returns "claimed" when this worker owns a new event', () => {
-    expect(describeClaimOutcome(true)).toBe('claimed');
+    expect(describeClaimOutcome('claimed')).toBe('claimed');
   });
 
   it('returns "skipped_completed" when event was already completed', () => {
-    expect(describeClaimOutcome(false, 'completed')).toBe('skipped_completed');
+    expect(describeClaimOutcome('completed')).toBe('skipped_completed');
   });
 
-  it('returns "skipped_processing" when event is locked by another worker', () => {
-    expect(describeClaimOutcome(false, 'processing')).toBe('skipped_processing');
-  });
-
-  it('returns "skipped" with no existing status (unknown)', () => {
-    expect(describeClaimOutcome(false)).toBe('skipped');
+  it('returns "locked_retryable" when event is locked by another worker', () => {
+    expect(describeClaimOutcome('locked')).toBe('locked_retryable');
   });
 });
+
+describe('isPrintfulConfirmedButUnreconciled', () => {
+  it('returns true when Printful is confirmed but store order is not fulfilled', () => {
+    expect(
+      isPrintfulConfirmedButUnreconciled(
+        makePrintfulOrder({ confirmed_at: '2025-01-01T00:00:00Z' }),
+        makeOrder({ fulfilment_status: 'unfulfilled' }),
+      ),
+    ).toBe(true);
+  });
+
+  it('returns true when Printful is confirmed but store order fulfilment is null', () => {
+    expect(
+      isPrintfulConfirmedButUnreconciled(
+        makePrintfulOrder({ confirmed_at: '2025-01-01T00:00:00Z' }),
+        makeOrder({ fulfilment_status: null }),
+      ),
+    ).toBe(true);
+  });
+
+  it('returns false when Printful is confirmed and store order is already fulfilled', () => {
+    expect(
+      isPrintfulConfirmedButUnreconciled(
+        makePrintfulOrder({ confirmed_at: '2025-01-01T00:00:00Z' }),
+        makeOrder({ fulfilment_status: 'fulfilled' }),
+      ),
+    ).toBe(false);
+  });
+
+  it('returns false when no Printful order exists', () => {
+    expect(isPrintfulConfirmedButUnreconciled(null, makeOrder({ fulfilment_status: 'unfulfilled' }))).toBe(false);
+  });
+
+  it('returns false when Printful order exists but is not confirmed', () => {
+    expect(
+      isPrintfulConfirmedButUnreconciled(makePrintfulOrder({ confirmed_at: null }), makeOrder({ fulfilment_status: 'unfulfilled' })),
+    ).toBe(false);
+  });
 });

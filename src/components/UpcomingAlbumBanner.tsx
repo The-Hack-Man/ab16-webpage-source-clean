@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase';
 import type { MusicRelease } from '@/types';
 import { timeUntil } from '@/lib/format';
 
+const DEFAULT_ALBUM_COVER = '/images/albumcovers/newalbumcover.png';
+
 export function UpcomingAlbumBanner({ release, dark = true }: { release: MusicRelease; dark?: boolean }) {
   const [countdown, setCountdown] = useState(timeUntil(release.release_date));
   const [email, setEmail] = useState('');
@@ -34,15 +36,7 @@ export function UpcomingAlbumBanner({ release, dark = true }: { release: MusicRe
       <div className="absolute -right-24 -top-24 h-96 w-96 rounded-full border border-current opacity-10" />
       <div className="container-base relative grid items-center gap-10 lg:grid-cols-[0.8fr,1.2fr]">
         <div className="aspect-square max-w-sm overflow-hidden bg-jet/10">
-          {release.cover_art_url ? (
-            <img src={release.cover_art_url} alt={`${release.title} artwork`} className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-              <span className="text-[10px] uppercase tracking-[0.3em] opacity-50">Album artwork</span>
-              <span className="mt-4 text-display-lg font-display font-extrabold">JAMIE G</span>
-              <span className="mt-2 text-xs uppercase tracking-[0.2em] opacity-50">Artwork to be announced</span>
-            </div>
-          )}
+          <img src={release.cover_art_url || DEFAULT_ALBUM_COVER} alt={`${release.title} artwork`} className="h-full w-full object-cover" />
         </div>
         <div>
           <p className="section-label mb-4 opacity-50">New album announcement</p>

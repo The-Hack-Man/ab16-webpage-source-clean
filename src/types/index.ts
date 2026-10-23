@@ -163,7 +163,9 @@ export interface SiteSettings {
   hero_headline: string;
   hero_subtext: string;
   hero_image_url: string | null;
+  hero_video_url: string | null;
   maintenance_mode: boolean;
+  updated_at: string;
 }
 
 export interface NewsletterSubscriber {
@@ -195,13 +197,18 @@ export interface OrderAddress {
   phone?: string;
 }
 
+export function parseOrderItems(items: unknown): OrderItem[] {
+  if (Array.isArray(items)) return items as OrderItem[];
+  return [];
+}
+
 export interface Order {
   id: string;
   order_number: string;
   email: string;
   items: OrderItem[];
-  shipping_address: OrderAddress;
-  billing_address: OrderAddress;
+  shipping_address: OrderAddress | null;
+  billing_address: OrderAddress | null;
   shipping_method: string | null;
   shipping_charge: number;
   discount_code: string | null;

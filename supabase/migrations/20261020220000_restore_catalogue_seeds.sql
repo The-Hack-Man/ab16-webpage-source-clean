@@ -96,9 +96,9 @@ INSERT INTO public.music_releases (
   '2026-12-02T00:00:00+00'::timestamptz,
   'upcoming',
   'Jamie G''s new album STILL BROKEN arrives 02.12.26.',
-  false,
-  NULL,
-  'https://open.spotify.com/artist/05IDis5l8XLJKkWp7CAOcC',
+   false,
+   '/images/albumcovers/newalbumcover.png',
+   'https://open.spotify.com/artist/05IDis5l8XLJKkWp7CAOcC',
   'https://music.apple.com/us/artist/jamie-g/1815382137',
   'https://www.youtube.com/channel/UCDTrDLZyf8YTXvKFTHOCkyg',
   NULL,
@@ -111,6 +111,7 @@ INSERT INTO public.music_releases (
   title = 'STILL BROKEN',
   artist = 'JAMIE G',
   description = 'Jamie G''s new album STILL BROKEN arrives 02.12.26.',
+  cover_art_url = EXCLUDED.cover_art_url,
   pre_save_url = NULL,
   status = 'upcoming';
 

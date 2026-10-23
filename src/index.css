@@ -13,7 +13,7 @@
     scroll-behavior: smooth;
   }
   body {
-    @apply bg-bone text-jet font-sans;
+    @apply bg-jet text-jet font-sans;
     font-feature-settings: 'ss01', 'cv01';
   }
   ::selection {
@@ -85,6 +85,9 @@
 
   .studio-input {
     @apply bg-studio-bg border border-studio-border rounded-lg px-3 py-2 text-sm text-studio-text focus:outline-none focus:border-studio-accent transition-colors;
+  }
+  .admin-input {
+    @apply w-full border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:border-jet transition-colors;
   }
   .studio-label {
     @apply text-xs font-medium text-studio-textMuted uppercase tracking-wide;

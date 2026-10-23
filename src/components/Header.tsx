@@ -220,8 +220,9 @@ function DesktopNavLink({ label, to, textColor, icon: Icon }: { label: string; t
 }
 
 function AnnouncementBar() {
-  const [text, setText] = useState('New drops incoming — sign up for early access · Free UK shipping over £75');
-  const [active, setActive] = useState(true);
+  const [text, setText] = useState('');
+  const [active, setActive] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -230,10 +231,11 @@ function AnnouncementBar() {
         setActive(data.announcement_active);
         if (data.announcement_text) setText(data.announcement_text);
       }
+      setLoaded(true);
     })();
   }, []);
 
-  if (!active) return null;
+  if (!loaded || !active) return null;
 
   return (
     <div className="border-b border-jet/10 bg-bone text-jet py-2 text-center">

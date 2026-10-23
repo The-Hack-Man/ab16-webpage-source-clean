@@ -5,11 +5,11 @@ import {
   Power, SkipBack, Circle, AlertTriangle,
 } from 'lucide-react';
 import {
-  MasteringEngine, DEFAULT_SETTINGS, PRESETS, decodeAudioFile, analyzeAudio,
+  MasteringEngine, DEFAULT_SETTINGS, PRESETS, decodeAudioFile, getSourceSampleRate, analyzeAudio,
   renderAudio, type MasteringSettings, type AudioAnalysis, type PresetConfig,
   type ExportFormat,
 } from '@/lib/masteringEngine';
-import { cn, formatLUFS, formatDb, formatDuration } from '@/lib/utils';
+import { cn, formatLUFS, formatDb, formatDuration, MAX_UPLOAD_BYTES, formatBytes } from '@/lib/utils';
 import SpectrumAnalyzer from '@/components/SpectrumAnalyzer';
 import { supabase } from '@/lib/supabase';
 import type { MusicRelease } from '@/types';
@@ -96,15 +96,16 @@ export function AdminAIMastering() {
 
     try {
       if (!file.type.startsWith('audio/')) throw new Error('Please upload an audio file (WAV, FLAC, or MP3).');
-      if (file.size > 1073741824) throw new Error('File exceeds 1 GB limit.');
+      if (file.size > MAX_UPLOAD_BYTES) throw new Error(`File exceeds ${formatBytes(MAX_UPLOAD_BYTES)} limit.`);
 
       const ctx = getAudioContext();
       const buffer = await decodeAudioFile(file, ctx, DEMO_DURATION);
+      const sourceSampleRate = await getSourceSampleRate(file, buffer.sampleRate);
       originalBufferRef.current = buffer;
       const baseName = file.name.replace(/\.[^.]+$/, '');
       setFileName(baseName);
       setDownloadName(`${baseName}_mastered`);
-      setAnalysis(analyzeAudio(buffer));
+      setAnalysis({ ...analyzeAudio(buffer), sampleRate: sourceSampleRate });
 
       if (engineRef.current) engineRef.current.dispose();
       engineRef.current = new MasteringEngine(ctx);
@@ -394,7 +395,8 @@ export function AdminAIMastering() {
           </div>
 
           <div className="hidden lg:block w-48">
-            <SpectrumAnalyzer analyser={playMode === 'mastered' && isPlaying ? analyser : null} isPlaying={isPlaying} />
+            <SpectrumAnalyzer analyser={playMode === 'mastered' && isPlaying ? analyser : null} isPlaying={isPlaying} theme="master" />
+            {!(playMode === 'mastered' && isPlaying) && <span>Play preview to view spectrum</span>}
           </div>
         </div>
       )}
@@ -415,7 +417,7 @@ export function AdminAIMastering() {
               )}
               <div className="mt-6 grid grid-cols-3 gap-6 text-center max-w-lg">
                 <FeatureBadge icon={Disc3} text="7-Band EQ" />
-                <FeatureBadge icon={Power} text="De-Esser + Comp" />
+                <FeatureBadge icon={Power} text="Sibilance EQ + Comp" />
                 <FeatureBadge icon={FileAudio} text="WAV + MP3 Export" />
               </div>
             </div>
@@ -559,10 +561,11 @@ export function AdminAIMastering() {
                 </RackModule>
 
                 <RackModule
-                  title="De-Esser"
+                  title="Static Sibilance EQ"
                   enabled={settings.deEsser.enabled}
                   onToggle={() => updateSettings({ ...settings, deEsser: { ...settings.deEsser, enabled: !settings.deEsser.enabled } })}
                 >
+                  <p className="master-module-note">Fixed-frequency cut · not dynamic de-essing.</p>
                   <div className="grid grid-cols-2 gap-3">
                     <Knob label="Freq" value={settings.deEsser.freq} min={2000} max={12000} step={100}
                       onChange={v => updateSettings({ ...settings, deEsser: { ...settings.deEsser, freq: v } })}
@@ -614,12 +617,8 @@ export function AdminAIMastering() {
                       onChange={v => updateSettings({ ...settings, limiter: { ...settings.limiter, release: v } })}
                       format={v => `${v}ms`} disabled={!settings.limiter.enabled} />
                   </div>
-                  <div className="mt-3">
-                    <Knob label="Target LUFS" value={settings.targetLufs} min={-23} max={-6} step={0.1}
-                      onChange={v => updateSettings({ ...settings, targetLufs: v })}
-                      format={v => `${v.toFixed(1)}`} disabled={!settings.limiter.enabled} />
-                  </div>
                 </RackModule>
+
               </div>
 
               {/* Export bar */}
@@ -805,7 +804,7 @@ function Knob({
         <div
           className="absolute inset-0 rounded-full border-2 border-transparent"
           style={{
-            background: `conic-gradient(from 225deg, ${disabled ? '#252836' : '#3b82f6'} ${normalized * 270}deg, transparent ${normalized * 270}deg)`,
+            background: `conic-gradient(from 225deg, ${disabled ? '#252836' : 'var(--master-accent, #b94f38)'} ${normalized * 270}deg, transparent ${normalized * 270}deg)`,
             WebkitMask: 'radial-gradient(transparent 55%, black 57%)',
             mask: 'radial-gradient(transparent 55%, black 57%)',
           }}
@@ -869,7 +868,7 @@ function DropZone({ onDrop, disabled }: { onDrop: (files: File[]) => void; disab
         <UploadCloud className="w-7 h-7 text-studio-accent" />
       </div>
       <p className="text-sm font-medium text-studio-text">Drop your track here or click to browse</p>
-      <p className="text-xs text-studio-textMuted mt-1">WAV, FLAC, or MP3 — up to 1 GB · 30-second free preview</p>
+      <p className="text-xs text-studio-textMuted mt-1">WAV, FLAC, or MP3 — up to {formatBytes(MAX_UPLOAD_BYTES)} · 30-second free preview</p>
       <input
         ref={inputRef}
         type="file"
