@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShieldCheck, Lock, ArrowRight, Check } from 'lucide-react';
 import { useCart } from '@/hooks/useCart';
 import { formatPrice } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { startStripeCheckout } from '@/lib/checkout';
+import { useAuth } from '@/hooks/useAuth';
 
 const FREE_SHIPPING_THRESHOLD = 7500;
 
 export function CheckoutPage() {
   const { items, subtotal } = useCart();
+  const { user } = useAuth();
   const [form, setForm] = useState({
     email: '', firstName: '', lastName: '', address1: '', address2: '',
     city: '', postcode: '', country: 'United Kingdom', phone: '',
@@ -24,6 +26,10 @@ export function CheckoutPage() {
   const [discountError, setDiscountError] = useState('');
   const [placing, setPlacing] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user?.email) setForm((current) => current.email ? current : { ...current, email: user.email ?? '' });
+  }, [user?.email]);
 
   const shipping = form.shippingMethod === 'express' ? 850 : (subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : 450);
   const discountAmount = !discountApplied

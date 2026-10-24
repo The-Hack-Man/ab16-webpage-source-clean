@@ -17,7 +17,9 @@ export interface CheckoutCustomer {
 
 export async function startStripeCheckout(customer: CheckoutCustomer, items: CartItem[]) {
   const origin = window.location.origin;
+  const { data: sessionData } = await supabase.auth.getSession();
   const { data, error } = await supabase.functions.invoke('create-checkout', {
+    ...(sessionData.session ? { headers: { Authorization: `Bearer ${sessionData.session.access_token}` } } : {}),
     body: {
       customer,
       items: items.map((item) => ({ variant_id: item.variant_id, quantity: item.quantity })),

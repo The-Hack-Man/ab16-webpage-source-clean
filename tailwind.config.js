@@ -84,12 +84,17 @@ export default {
           '0%': { transform: 'translateX(0)' },
           '100%': { transform: 'translateX(-50%)' },
         },
+        bounce: {
+          '0%, 100%': { transform: 'translateY(-4px)', opacity: '0.3' },
+          '50%': { transform: 'translateY(0)', opacity: '1' },
+        },
       },
       animation: {
         'fade-up': 'fade-up 0.8s cubic-bezier(0.16, 1, 0.3, 1) both',
         'fade-in': 'fade-in 0.6s ease both',
         'scroll-indicator': 'scroll-indicator 1.6s ease-in-out infinite',
         marquee: 'marquee 30s linear infinite',
+        bounce: 'bounce 1.4s ease-in-out 3 both',
       },
     },
   },

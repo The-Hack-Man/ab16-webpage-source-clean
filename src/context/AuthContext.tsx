@@ -26,19 +26,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
       setLoading(false);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-    });
+    void supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (error) console.error('Could not restore authentication session:', error.message);
+        setSession(data.session);
+      })
+      .catch((error: unknown) => {
+        console.error('Could not restore authentication session:', error instanceof Error ? error.message : 'Unknown error');
+        setSession(null);
+      })
+      .finally(() => setLoading(false));
 
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const role = session?.user?.app_metadata?.role as string | null ?? null;
+  const role = (session?.user?.app_metadata?.role as string | undefined) ?? null;
   const isAdmin = role === 'admin' || role === 'super_admin';
 
   const value: AuthContextValue = {

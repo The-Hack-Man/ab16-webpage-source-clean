@@ -10,6 +10,7 @@ import {
   type OrderRecord,
   type PaymentRecord,
 } from './idempotency.ts';
+import { verifyStripeWebhookSignature } from './request_guard.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -92,14 +93,22 @@ Deno.serve(async (req) => {
   if (!signature) return json({ error: 'Missing Stripe signature.' }, 400);
 
   const stripe = new Stripe(stripeKey, { apiVersion: '2024-06-20' });
-  const body = await req.text();
-  let event: Stripe.Event;
-  try {
-    event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
-  } catch (error) {
-    console.error('Stripe webhook signature verification failed:', error);
-    return json({ error: 'Invalid Stripe signature.' }, 400);
+  const verification = await verifyStripeWebhookSignature(
+    req,
+    webhookSecret,
+    (body, requestSignature, secret) =>
+      stripe.webhooks.constructEventAsync(body, requestSignature, secret),
+  );
+  if (!verification.success) {
+    if (verification.reason === 'invalid_signature') {
+      console.error('Stripe webhook signature verification failed:', verification.error);
+    }
+    const message = verification.reason === 'missing_signature'
+      ? 'Missing Stripe signature.'
+      : 'Invalid Stripe signature.';
+    return json({ error: message }, 400);
   }
+  const event = verification.event;
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },

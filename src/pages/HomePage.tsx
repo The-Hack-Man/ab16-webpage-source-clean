@@ -62,7 +62,9 @@ export function HomePage() {
         </div>
       )}
       <FeaturedClothing products={products} loading={loading} />
+      <div className="divider-wave" />
       <LatestDrop campaign={campaign} />
+      <div className="divider-wave" />
       <FeaturedRelease release={featuredRelease} />
       <ShopMeetsMusic />
       <BrandStory />
@@ -85,12 +87,12 @@ function Hero({ settings }: { settings: SiteSettings | null }) {
 
       <div className="relative h-full container-base flex flex-col justify-end pt-16 pb-20 lg:pt-24 lg:pb-28">
         <div className="max-w-3xl animate-fade-up overflow-visible">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-bone/60 mb-5">
+          <p className="editorial-kicker text-bone/75 mb-5">
             AB16 Clothing × Jamie G Music — Aberdeen
           </p>
-          <h1 className="text-display-2xl font-display font-extrabold text-bone leading-[0.95] w-full break-words">
-            {headline}
-          </h1>
+           <h1 className="text-display-2xl font-display font-extrabold text-bone leading-[0.95] w-full break-words text-gradient-animated">
+             {headline}
+           </h1>
           <p className="mt-6 text-base lg:text-lg text-bone/70 max-w-xl leading-relaxed">
             {subtext}
           </p>
@@ -106,7 +108,10 @@ function Hero({ settings }: { settings: SiteSettings | null }) {
 
         <div className="absolute bottom-8 right-8 hidden lg:flex flex-col items-center gap-2 text-bone/50">
           <span className="text-[9px] uppercase tracking-[0.3em] rotate-90 origin-center mt-8">Scroll</span>
-          <ArrowDown size={14} className="animate-scroll-indicator" />
+          <div className="relative">
+            <ArrowDown size={14} className="animate-bounce" />
+            <div className="absolute -inset-2 border border-accent/30 rounded-full animate-pulse-glow" />
+          </div>
         </div>
       </div>
     </section>
@@ -119,8 +124,8 @@ function FeaturedClothing({ products, loading }: { products: Product[]; loading:
       <div className="container-base">
         <div className="flex items-end justify-between mb-10">
           <div>
-            <p className="section-label mb-3">Featured Clothing</p>
-            <h2 className="text-display-lg">The latest from AB16.</h2>
+            <p className="editorial-kicker mb-3">Featured Clothing</p>
+            <h2 className="text-display-lg text-gradient-animated">The latest from AB16.</h2>
           </div>
           <Link to="/shop" className="link-underline text-sm font-medium hidden sm:inline-block">
             Shop the collection
@@ -177,7 +182,7 @@ function LatestDrop({ campaign }: { campaign: Campaign | null }) {
       <div className="relative container-base py-24 lg:py-36">
         <div className="max-w-2xl">
           <p className="section-label text-bone/50 mb-4">{isLive ? 'Now Live' : 'The Latest Drop'}</p>
-          <h2 className="text-display-xl">{campaign.name}</h2>
+          <h2 className="text-display-xl text-gradient-animated">{campaign.name}</h2>
           {campaign.description && <p className="mt-5 text-bone/60 text-lg leading-relaxed">{campaign.description}</p>}
 
           {!isLive && campaign.launch_date && (
@@ -304,27 +309,27 @@ function ShopMeetsMusic() {
         <p className="section-label text-center mb-3">More Than A Label</p>
         <h2 className="text-display-xl text-center mb-14">MORE THAN A LABEL. IT'S A MOVEMENT.</h2>
 
-        <div className="grid md:grid-cols-2 gap-1">
-          <div className="relative aspect-[4/5] md:aspect-[3/4] group overflow-hidden">
-            <img src={SPLIT_FASHION} alt="AB16 fashion" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-            <div className="absolute inset-0 bg-jet/30 group-hover:bg-jet/20 transition-colors" />
-            <div className="absolute bottom-0 left-0 right-0 p-8 lg:p-10">
-              <p className="text-[11px] uppercase tracking-[0.25em] text-bone/60 mb-2">AB16 Clothing</p>
-              <h3 className="text-display-lg text-bone">Wear the vision.</h3>
-              <Link to="/shop" className="btn-light mt-5">Shop the Brand <ArrowRight size={14} /></Link>
+          <div className="grid md:grid-cols-2 gap-1">
+            <div className="relative aspect-[4/5] md:aspect-[3/4] group overflow-hidden clip-diagonal-top">
+              <img src={SPLIT_FASHION} alt="AB16 fashion" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              <div className="absolute inset-0 bg-gradient-to-r from-jet/50 via-jet/30 to-transparent group-hover:from-jet/60 transition-all duration-500" />
+              <div className="absolute bottom-0 left-0 right-0 p-8 lg:p-10">
+                <p className="text-[11px] uppercase tracking-[0.25em] text-bone/60 mb-2">AB16 Clothing</p>
+                <h3 className="text-display-lg text-bone group-hover:text-accent transition-colors">Wear the vision.</h3>
+                <Link to="/shop" className="btn-light mt-5">Shop the Brand <ArrowRight size={14} /></Link>
+              </div>
             </div>
-          </div>
 
-          <div className="relative aspect-[4/5] md:aspect-[3/4] group overflow-hidden">
-            <img src={SPLIT_MUSIC} alt="Jamie G music" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-            <div className="absolute inset-0 bg-jet/30 group-hover:bg-jet/20 transition-colors" />
-            <div className="absolute bottom-0 left-0 right-0 p-8 lg:p-10">
-              <p className="text-[11px] uppercase tracking-[0.25em] text-bone/60 mb-2">Jamie G Music</p>
-              <h3 className="text-display-lg text-bone">Hear the vision.</h3>
-              <Link to="/music" className="btn-light mt-5">Enter the Music World <ArrowRight size={14} /></Link>
+            <div className="relative aspect-[4/5] md:aspect-[3/4] group overflow-hidden clip-diagonal-top">
+              <img src={SPLIT_MUSIC} alt="Jamie G music" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              <div className="absolute inset-0 bg-gradient-to-r from-jet/50 via-jet/30 to-transparent group-hover:from-jet/60 transition-all duration-500" />
+              <div className="absolute bottom-0 left-0 right-0 p-8 lg:p-10">
+                <p className="text-[11px] uppercase tracking-[0.25em] text-bone/60 mb-2">Jamie G Music</p>
+                <h3 className="text-display-lg text-bone group-hover:text-accent transition-colors">Hear the vision.</h3>
+                <Link to="/music" className="btn-light mt-5">Enter the Music World <ArrowRight size={14} /></Link>
+              </div>
             </div>
           </div>
-        </div>
       </div>
     </section>
   );
@@ -342,7 +347,7 @@ function BrandStory() {
           </div>
           <div>
             <p className="section-label text-bone/40 mb-4">Our Story</p>
-            <h2 className="text-display-lg">WEAR THE VISION. HEAR THE VISION.</h2>
+            <h2 className="text-display-lg text-gradient-animated">WEAR THE VISION. HEAR THE VISION.</h2>
             <p className="mt-6 text-bone/60 leading-relaxed text-lg">
               AB16 is more than a postcode. It's the heart of Aberdeen's north end — the schemes, the skyscrapers,
               the streets that raised us. AB16 Clothing and Jamie G Music are two halves of one creative world:
@@ -382,13 +387,14 @@ function SocialSection() {
               href={s.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="group border border-jet/10 p-8 lg:p-10 hover:bg-jet hover:text-bone transition-all duration-300 ease-out-expo"
+              className="group border border-jet/10 p-8 lg:p-10 hover:bg-jet hover:text-bone transition-all duration-500 ease-out-expo relative overflow-hidden"
             >
-              <s.icon size={28} strokeWidth={1.5} className="mb-4 transition-transform group-hover:scale-110" />
-              <h3 className="text-base font-semibold">{s.label}</h3>
+              <div className="absolute inset-0 bg-gradient-to-r from-accent/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              <s.icon size={28} strokeWidth={1.5} className="mb-4 transition-transform group-hover:scale-110 group-hover:text-accent" />
+              <h3 className="text-base font-semibold group-hover:text-accent transition-colors">{s.label}</h3>
               <p className="text-sm text-slate-400 group-hover:text-bone/50 mt-1">{s.desc}</p>
-              <span className="mt-4 inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wider">
-                Follow <ArrowRight size={12} className="transition-transform group-hover:translate-x-1" />
+              <span className="mt-4 inline-flex items-center gap-1 text-xs font-medium uppercase tracking-wider text-accent/60 group-hover:text-accent group-hover:translate-x-1 transition-all">
+                Follow <ArrowRight size={12} />
               </span>
             </a>
           ))}

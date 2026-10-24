@@ -254,41 +254,43 @@ export function AdminAIMastering() {
     setMastering(true);
 
     try {
+      const previewPath = `masters/${selectedRelease}/${crypto.randomUUID()}-${fileName || 'track'}-preview.wav`;
+      const previewBlob = await renderAudio(originalBufferRef.current, settings, 'wav', DEMO_DURATION, 320);
       const { data: uploadData, error: uploadErr } = await supabase.storage
         .from('releases')
-        .upload(`stems/${crypto.randomUUID()}/${fileName || 'track'}.wav`, await renderAudio(originalBufferRef.current, settings, 'wav', DEMO_DURATION, 320));
+        .upload(previewPath, previewBlob, { contentType: 'audio/wav', upsert: false });
 
       if (uploadErr) throw uploadErr;
 
       const { data: job, error: jobErr } = await supabase.from('ai_mastering_jobs').insert({
         release_id: selectedRelease,
-        track_title: fileName || 'track',
+        track_title: `${fileName || 'track'} (30s preview)`,
         preset: activePreset,
-        status: 'processing',
-        input_url: uploadData?.path,
+        status: 'completed',
+        output_url: uploadData.path,
+        completed_at: new Date().toISOString(),
       }).select().single();
 
-      if (jobErr || !job) throw jobErr;
+      if (jobErr || !job) {
+        await supabase.storage.from('releases').remove([uploadData.path]);
+        throw jobErr ?? new Error('The preview was uploaded but could not be saved to the mastering history.');
+      }
 
-      setJobs([job as MasteringJob, ...jobs]);
-      setMastering(false);
-
-      setTimeout(() => {
-        supabase.from('ai_mastering_jobs')
-          .update({ status: 'completed', output_url: uploadData?.path, completed_at: new Date().toISOString() })
-          .eq('id', job.id);
-        setJobs((prev) =>
-          prev.map((j) =>
-            j.id === job.id
-              ? { ...j, status: 'completed', output_url: uploadData?.path, completed_at: new Date().toISOString() }
-              : j
-          )
-        );
-      }, 3000);
+      setJobs((current) => [job as MasteringJob, ...current]);
     } catch (e) {
       alert(`Mastering error: ${(e as Error).message}`);
+    } finally {
       setMastering(false);
     }
+  };
+
+  const downloadSavedMaster = async (path: string) => {
+    const { data, error } = await supabase.storage.from('releases').createSignedUrl(path, 60);
+    if (error || !data?.signedUrl) {
+      setUploadError('Could not create a secure download link. Please try again.');
+      return;
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
   };
 
   useEffect(() => {
@@ -693,7 +695,7 @@ export function AdminAIMastering() {
                     className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-studio-accent to-blue-600 text-white rounded-lg text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
                   >
                     {mastering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Disc3 className="w-4 h-4" />}
-                    {mastering ? 'Processing…' : 'Save Master'}
+                    {mastering ? 'Saving preview…' : 'Save 30s Preview'}
                   </button>
                 </div>
               </div>
@@ -724,14 +726,13 @@ export function AdminAIMastering() {
                       </div>
                     </div>
                     {job.output_url && job.status === 'completed' && (
-                      <a
-                        href={job.output_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => void downloadSavedMaster(job.output_url!)}
                         className="text-xs text-studio-accent hover:underline flex items-center gap-1"
                       >
                         <Download size={12} /> Download
-                      </a>
+                      </button>
                     )}
                   </div>
                 ))}

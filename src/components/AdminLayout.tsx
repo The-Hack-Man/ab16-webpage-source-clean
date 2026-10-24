@@ -25,7 +25,7 @@ const NAV = [
 ];
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { session, isAdmin, signOut } = useAuth();
+  const { session, loading, isAdmin, signOut } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -34,13 +34,17 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     navigate('/');
   };
 
+  if (loading) {
+    return <div className="min-h-screen bg-jet text-bone flex items-center justify-center" role="status">Restoring secure session…</div>;
+  }
+
   if (!session || !isAdmin) {
     return (
       <div className="min-h-screen bg-jet text-bone flex items-center justify-center px-4">
         <div className="max-w-md w-full text-center py-16">
           <Shield size={40} className="mx-auto text-bone/30 mb-4" strokeWidth={1} />
           <h1 className="text-display-lg text-bone">Admin Access</h1>
-          <p className="mt-3 text-bone/50">Sign in to access the dashboard.</p>
+          <p className="mt-3 text-bone/50">{session ? 'Your account does not have administrator access.' : 'Sign in to access the dashboard.'}</p>
           <Link to="/account/login" className="btn-light mt-6">Sign In</Link>
         </div>
       </div>

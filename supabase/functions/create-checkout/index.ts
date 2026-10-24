@@ -24,6 +24,9 @@ Deno.serve(async (req) => {
     return json({ error: 'Method not allowed.' }, 405);
   }
 
+  let orderId: string | null = null;
+  let supabaseClient: ReturnType<typeof createClient> | null = null;
+
   try {
     const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -37,9 +40,17 @@ Deno.serve(async (req) => {
     }
 
     const stripe = new Stripe(stripeKey, { apiVersion: '2024-06-20' });
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
+    const supabase = supabaseClient = createClient(supabaseUrl, serviceRoleKey);
 
     const body = await req.json();
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const accessToken = authHeader.match(/^Bearer\s+(.+)$/i)?.[1];
+    let customerUserId: string | null = null;
+    if (accessToken) {
+      const { data: authData, error: authError } = await supabase.auth.getUser(accessToken);
+      if (authError || !authData.user) return json({ error: 'Your sign-in session is no longer valid. Please sign in again.' }, 401);
+      customerUserId = authData.user.id;
+    }
     const customer = body.customer ?? {} as CustomerInfo;
     const requestedItems: CheckoutItem[] = Array.isArray(body.items) ? body.items : [];
 
@@ -141,6 +152,7 @@ Deno.serve(async (req) => {
     const { data: order, error: orderError } = await supabase.from('orders').insert({
       order_number: orderNumber,
       email: customer.email,
+      user_id: customerUserId,
       items: snapshot,
       shipping_address: {
         firstName: customer.firstName,
@@ -174,6 +186,7 @@ Deno.serve(async (req) => {
     if (orderError || !order) {
       return json({ error: 'Could not create the order record.' }, 500);
     }
+    orderId = order.id;
 
     const { error: orderItemsError } = await supabase.from('order_items').insert(
       snapshot.map((item) => ({ ...item, order_id: order.id })),
@@ -221,20 +234,24 @@ Deno.serve(async (req) => {
 
     return json({ url: session.url, orderNumber: order.order_number });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Stripe checkout failed.';
-
     // If we have an order ID in scope, mark it as failed to avoid lingering pending orders.
     // This preserves audit history (we never delete orders) while ensuring no order
     // stays "pending" indefinitely after a Stripe API failure.
-    if (order?.id) {
-      await supabase
-        .from('orders')
-        .update({ payment_status: 'failed' })
-        .eq('id', order.id)
-        .eq('payment_status', 'pending');
+    if (orderId && supabaseClient) {
+      try {
+        const { error: cleanupError } = await supabaseClient
+          .from('orders')
+          .update({ payment_status: 'failed' })
+          .eq('id', orderId)
+          .eq('payment_status', 'pending');
+        if (cleanupError) console.error('Could not mark failed checkout order:', cleanupError);
+      } catch (cleanupError) {
+        console.error('Could not mark failed checkout order:', cleanupError);
+      }
     }
 
-    return json({ error: message }, 500);
+    console.error('create-checkout failed:', error instanceof Error ? error.name : 'Unknown error');
+    return json({ error: 'Checkout could not be started safely. Please try again.' }, 500);
   }
 });
 

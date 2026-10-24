@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_mastering_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          id: string
+          input_url: string | null
+          output_url: string | null
+          paid: boolean
+          payment_intent_id: string | null
+          preset: string
+          release_id: string | null
+          status: string
+          stripe_session_id: string | null
+          track_title: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          input_url?: string | null
+          output_url?: string | null
+          paid?: boolean
+          payment_intent_id?: string | null
+          preset?: string
+          release_id?: string | null
+          status?: string
+          stripe_session_id?: string | null
+          track_title: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          input_url?: string | null
+          output_url?: string | null
+          paid?: boolean
+          payment_intent_id?: string | null
+          preset?: string
+          release_id?: string | null
+          status?: string
+          stripe_session_id?: string | null
+          track_title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_mastering_jobs_release_id_fkey"
+            columns: ["release_id"]
+            isOneToOne: false
+            referencedRelation: "music_releases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -43,59 +96,6 @@ export type Database = {
           id?: string
         }
         Relationships: []
-      }
-      ai_mastering_jobs: {
-        Row: {
-          id: string
-          release_id: string | null
-          track_title: string
-          preset: string
-          status: string
-          input_url: string | null
-          output_url: string | null
-          stripe_session_id: string | null
-          payment_intent_id: string | null
-          paid: boolean
-          created_at: string
-          completed_at: string | null
-        }
-        Insert: {
-          id?: string
-          release_id?: string | null
-          track_title: string
-          preset: string
-          status?: string
-          input_url?: string | null
-          output_url?: string | null
-          stripe_session_id?: string | null
-          payment_intent_id?: string | null
-          paid?: boolean
-          created_at?: string
-          completed_at?: string | null
-        }
-        Update: {
-          id?: string
-          release_id?: string | null
-          track_title?: string
-          preset?: string
-          status?: string
-          input_url?: string | null
-          output_url?: string | null
-          stripe_session_id?: string | null
-          payment_intent_id?: string | null
-          paid?: boolean
-          created_at?: string
-          completed_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ai_mastering_jobs_release_id_fkey"
-            columns: ["release_id"]
-            isOneToOne: false
-            referencedRelation: "music_releases"
-            referencedColumns: ["id"]
-          }
-        ]
       }
       campaign_products: {
         Row: {
@@ -370,8 +370,83 @@ export type Database = {
         }
         Relationships: []
       }
+      jobs: {
+        Row: {
+          attempts: number
+          correlation_id: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          lease_expires_at: string | null
+          leased_by: string | null
+          max_attempts: number
+          payload: Json | null
+          scheduled_for: string
+          status: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          leased_by?: string | null
+          max_attempts?: number
+          payload?: Json | null
+          scheduled_for?: string
+          status?: string
+          type: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          correlation_id?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          lease_expires_at?: string | null
+          leased_by?: string | null
+          max_attempts?: number
+          payload?: Json | null
+          scheduled_for?: string
+          status?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      mastering_credits: {
+        Row: {
+          created_at: string
+          credits: number
+          id: string
+          total_purchased: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          credits?: number
+          id?: string
+          total_purchased?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          credits?: number
+          id?: string
+          total_purchased?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       music_releases: {
-         Row: {
+        Row: {
           accent_color: string | null
           announcement_text: string | null
           apple_music_url: string | null
@@ -567,6 +642,41 @@ export type Database = {
         }
         Relationships: []
       }
+      newsletter_unsubscribe_tokens: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          subscriber_id: string
+          token_hash: string
+          used_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          expires_at: string
+          id?: string
+          subscriber_id: string
+          token_hash: string
+          used_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          subscriber_id?: string
+          token_hash?: string
+          used_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "newsletter_unsubscribe_tokens_subscriber_id_fkey"
+            columns: ["subscriber_id"]
+            isOneToOne: false
+            referencedRelation: "newsletter_subscribers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_items: {
         Row: {
           id: string
@@ -684,6 +794,227 @@ export type Database = {
         }
         Relationships: []
       }
+      outbox: {
+        Row: {
+          correlation_id: string
+          created_at: string
+          error: string | null
+          event_type: string
+          id: string
+          idempotency_key: string
+          lease_expires_at: string | null
+          leased_by: string | null
+          payload: Json
+          processed: boolean
+          processed_at: string | null
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          correlation_id: string
+          created_at?: string
+          error?: string | null
+          event_type: string
+          id?: string
+          idempotency_key: string
+          lease_expires_at?: string | null
+          leased_by?: string | null
+          payload: Json
+          processed?: boolean
+          processed_at?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          correlation_id?: string
+          created_at?: string
+          error?: string | null
+          event_type?: string
+          id?: string
+          idempotency_key?: string
+          lease_expires_at?: string | null
+          leased_by?: string | null
+          payload?: Json
+          processed?: boolean
+          processed_at?: string | null
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
+      payment_records: {
+        Row: {
+          amount_cents: number
+          completed_at: string | null
+          created_at: string
+          credits_purchased: number
+          currency: string
+          id: string
+          status: string
+          stripe_payment_intent_id: string | null
+          stripe_session_id: string | null
+          user_id: string
+        }
+        Insert: {
+          amount_cents?: number
+          completed_at?: string | null
+          created_at?: string
+          credits_purchased?: number
+          currency?: string
+          id?: string
+          status?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
+          user_id?: string
+        }
+        Update: {
+          amount_cents?: number
+          completed_at?: string | null
+          created_at?: string
+          credits_purchased?: number
+          currency?: string
+          id?: string
+          status?: string
+          stripe_payment_intent_id?: string | null
+          stripe_session_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      printful_order_items: {
+        Row: {
+          created_at: string
+          id: string
+          price: number
+          printful_order_id: string
+          printful_variant_id: number | null
+          product_name: string
+          quantity: number
+          variant_color: string | null
+          variant_id: string | null
+          variant_size: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          price: number
+          printful_order_id: string
+          printful_variant_id?: number | null
+          product_name: string
+          quantity: number
+          variant_color?: string | null
+          variant_id?: string | null
+          variant_size?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          price?: number
+          printful_order_id?: string
+          printful_variant_id?: number | null
+          product_name?: string
+          quantity?: number
+          variant_color?: string | null
+          variant_id?: string | null
+          variant_size?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "printful_order_items_printful_order_id_fkey"
+            columns: ["printful_order_id"]
+            isOneToOne: false
+            referencedRelation: "printful_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "printful_order_items_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      printful_orders: {
+        Row: {
+          carrier: string | null
+          confirmed_at: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          order_id: string
+          printful_order_id: number | null
+          status: string
+          tracking_number: string | null
+          tracking_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          carrier?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          order_id: string
+          printful_order_id?: number | null
+          status?: string
+          tracking_number?: string | null
+          tracking_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          carrier?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          order_id?: string
+          printful_order_id?: number | null
+          status?: string
+          tracking_number?: string | null
+          tracking_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "printful_orders_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      processed_stripe_events: {
+        Row: {
+          attempts: number
+          completed_at: string | null
+          last_error: string | null
+          locked_until: string | null
+          processed_at: string
+          status: string
+          stripe_event_id: string
+        }
+        Insert: {
+          attempts?: number
+          completed_at?: string | null
+          last_error?: string | null
+          locked_until?: string | null
+          processed_at?: string
+          status?: string
+          stripe_event_id: string
+        }
+        Update: {
+          attempts?: number
+          completed_at?: string | null
+          last_error?: string | null
+          locked_until?: string | null
+          processed_at?: string
+          status?: string
+          stripe_event_id?: string
+        }
+        Relationships: []
+      }
       product_images: {
         Row: {
           alt_text: string | null
@@ -726,6 +1057,7 @@ export type Database = {
           id: string
           price_override: number | null
           printful_sync_variant_id: number | null
+          printful_variant_id: number | null
           product_id: string
           size: string
           sku: string | null
@@ -737,6 +1069,7 @@ export type Database = {
           id?: string
           price_override?: number | null
           printful_sync_variant_id?: number | null
+          printful_variant_id?: number | null
           product_id: string
           size: string
           sku?: string | null
@@ -748,6 +1081,7 @@ export type Database = {
           id?: string
           price_override?: number | null
           printful_sync_variant_id?: number | null
+          printful_variant_id?: number | null
           product_id?: string
           size?: string
           sku?: string | null
@@ -975,50 +1309,64 @@ export type Database = {
           },
         ]
       }
-      mastering_credits: {
-        Row: {
-          created_at: string
-          credits: number
-          id: string
-          total_purchased: number
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          credits?: number
-          id?: string
-          total_purchased?: number
-          updated_at?: string
-          user_id?: string
-        }
-        Update: {
-          created_at?: string
-          credits?: number
-          id?: string
-          total_purchased?: number
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      consume_mastering_credit: {
-        Args: Record<PropertyKey, never>
-        Returns: number
+      claim_next_job: {
+        Args: { p_lease_ms: number; p_now: string; p_worker_id: string }
+        Returns: {
+          attempts: number
+          correlation_id: string
+          id: string
+          last_error: string
+          lease_expires_at: string
+          leased_by: string
+          max_attempts: number
+          payload: Json
+          scheduled_for: string
+          status: string
+          type: string
+        }[]
       }
+      claim_next_outbox: {
+        Args: { p_lease_ms: number; p_now: string; p_worker_id: string }
+        Returns: {
+          correlation_id: string
+          created_at: string
+          event_type: string
+          id: string
+          idempotency_key: string
+          payload: Json
+          version: number
+        }[]
+      }
+      claim_stripe_event: { Args: { p_event_id: string }; Returns: boolean }
+      claim_stripe_event_v2: { Args: { p_event_id: string }; Returns: string }
+      consume_mastering_credit: { Args: never; Returns: number }
       grant_mastering_credits: {
         Args: {
           p_credits: number
-          p_payment_intent_id?: string | null
+          p_payment_intent_id?: string
           p_stripe_session_id: string
           p_user_id: string
         }
         Returns: undefined
+      }
+      is_admin: { Args: never; Returns: boolean }
+      mark_stripe_event_completed: {
+        Args: { p_event_id: string }
+        Returns: undefined
+      }
+      mark_stripe_event_failed: {
+        Args: { p_error?: string; p_event_id: string }
+        Returns: undefined
+      }
+      reclaim_expired_jobs: { Args: { p_now: string }; Returns: number }
+      redeem_newsletter_unsubscribe: {
+        Args: { p_token_hash: string }
+        Returns: boolean
       }
     }
     Enums: {

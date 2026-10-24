@@ -11,14 +11,14 @@ export function ProductCard({ product }: { product: Product }) {
   const soldOut = !comingSoon && totalStock === 0;
 
   return (
-    <Link to={`/shop/${product.slug}`} className="group block">
-      <div className="relative aspect-[4/5] bg-slate-100 overflow-hidden">
+    <Link to={`/shop/${product.slug}`} className="group block animate-rise-in" style={{ animationDelay: `${(product.id.charCodeAt(0) % 4) * 100}ms` }}>
+      <div className="relative aspect-[4/5] bg-[#e8e2d7] overflow-hidden editorial-panel transition-all duration-500 ease-out-expo group-hover:shadow-xl group-hover:shadow-accent/20">
         {image ? (
           <>
             <img
               src={image}
               alt={product.product_images?.[0]?.alt_text ?? product.name}
-              className="w-full h-full object-cover transition-transform duration-700 ease-out-expo group-hover:scale-105"
+              className="w-full h-full object-cover transition-transform duration-700 ease-out-expo group-hover:scale-[1.04]"
               loading="lazy"
             />
             {secondImage && (
@@ -38,11 +38,23 @@ export function ProductCard({ product }: { product: Product }) {
 
         {/* Badges */}
         <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-          {product.is_new_arrival && <span className="badge-new">New</span>}
+          {product.is_new_arrival && (
+            <span className="badge bg-accent animate-pulse-glow text-white relative overflow-hidden">
+              <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 animate-shimmer" />
+              New Drop
+            </span>
+          )}
           {product.is_limited_drop && <span className="badge-limited">Limited</span>}
           {product.compare_at_price && <span className="badge-sale">Sale</span>}
           {comingSoon && <span className="badge bg-jet text-bone">Coming Soon</span>}
           {soldOut && <span className="badge-soldout">Sold Out</span>}
+        </div>
+
+        {/* Quick view overlay */}
+        <div className="absolute inset-0 bg-jet/0 group-hover:bg-jet/30 transition-colors duration-500 flex items-center justify-center opacity-0 group-hover:opacity-100">
+          <div className="w-14 h-14 rounded-full bg-bone/90 flex items-center justify-center transition-all duration-500 scale-90 group-hover:scale-100">
+            <ArrowRight size={20} className="text-jet ml-0.5" />
+          </div>
         </div>
       </div>
 

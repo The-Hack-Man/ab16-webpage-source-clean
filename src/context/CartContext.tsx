@@ -1,4 +1,4 @@
-import { createContext, useEffect, useReducer, type ReactNode } from 'react';
+import { createContext, useEffect, useReducer, useState, type ReactNode } from 'react';
 import type { CartItem } from '@/types';
 
 const STORAGE_KEY = 'ab16_cart';
@@ -20,16 +20,17 @@ function reducer(state: CartState, action: CartAction): CartState {
       return { items: action.items };
     case 'ADD': {
       const existing = state.items.find((i) => i.variant_id === action.item.variant_id);
+      const quantity = Math.min(action.item.quantity, action.item.max_stock);
       if (existing) {
         return {
           items: state.items.map((i) =>
             i.variant_id === action.item.variant_id
-              ? { ...i, quantity: Math.min(i.quantity + action.item.quantity, i.max_stock) }
+              ? { ...action.item, quantity: Math.min(i.quantity + quantity, action.item.max_stock) }
               : i
           ),
         };
       }
-      return { items: [...state.items, action.item] };
+      return { items: [...state.items, { ...action.item, quantity }] };
     }
     case 'REMOVE':
       return { items: state.items.filter((i) => i.variant_id !== action.variantId) };
@@ -63,26 +64,33 @@ export type { CartContextValue };
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, { items: [] });
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const items = JSON.parse(stored) as CartItem[];
+        const parsed: unknown = JSON.parse(stored);
+        const items = Array.isArray(parsed)
+          ? parsed.filter((item): item is CartItem => isCartItem(item))
+          : [];
         dispatch({ type: 'HYDRATE', items });
       }
     } catch {
-      // ignore parse errors
+      localStorage.removeItem(STORAGE_KEY);
+    } finally {
+      setHydrated(true);
     }
   }, []);
 
   useEffect(() => {
+    if (!hydrated) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.items));
     } catch {
       // ignore
     }
-  }, [state.items]);
+  }, [hydrated, state.items]);
 
   const count = state.items.reduce((sum, i) => sum + i.quantity, 0);
   const subtotal = state.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
@@ -98,4 +106,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+}
+
+function isCartItem(value: unknown): value is CartItem {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Partial<CartItem>;
+  return typeof item.variant_id === 'string'
+    && typeof item.product_slug === 'string'
+    && typeof item.name === 'string'
+    && Number.isFinite(item.price) && Number(item.price) >= 0
+    && Number.isInteger(item.quantity) && Number(item.quantity) > 0
+    && Number.isInteger(item.max_stock) && Number(item.max_stock) > 0
+    && Number(item.quantity) <= Number(item.max_stock);
 }

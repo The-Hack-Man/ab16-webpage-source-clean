@@ -186,13 +186,23 @@ function AccountCard({ title, desc, to }: { title: string; desc: string; to: str
 function OrderHistory({ email }: { email: string }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError(false);
     (async () => {
-      const { data } = await supabase.from('orders').select('*').eq('email', email).order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('orders').select('*').eq('email', email).order('created_at', { ascending: false });
+      if (!active) return;
+      if (error) {
+        console.error('Could not load order history:', error.message);
+        setLoadError(true);
+      }
       setOrders(data as unknown as Order[] ?? []);
       setLoading(false);
     })();
+    return () => { active = false; };
   }, [email]);
 
   if (loading) return <p className="text-sm text-slate-400">Loading orders…</p>;
@@ -200,7 +210,9 @@ function OrderHistory({ email }: { email: string }) {
   return (
     <div>
       <h2 className="text-sm font-semibold uppercase tracking-wider mb-4">Recent Orders</h2>
-      {orders.length === 0 ? (
+      {loadError ? (
+        <p className="border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">Your order history could not be loaded. Please try again later.</p>
+      ) : orders.length === 0 ? (
         <div className="border border-jet/10 py-12 text-center">
           <p className="text-sm text-slate-400">No orders yet.</p>
           <Link to="/shop" className="btn-outline mt-4">Start Shopping</Link>

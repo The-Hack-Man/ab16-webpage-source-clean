@@ -49,6 +49,7 @@ export function MasterPage() {
   const [credits, setCredits] = useState<number | null>(null);
   const [creditsLoading, setCreditsLoading] = useState(false);
   const [creditRefreshKey, setCreditRefreshKey] = useState(0);
+  const [verificationRetryKey, setVerificationRetryKey] = useState(0);
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
 
   const progressTimerRef = useRef<number>(0);
@@ -282,11 +283,52 @@ export function MasterPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment') === 'success') {
-      setPaymentNotice('Checkout returned successfully. Checking your mastering credit…');
+      setPaymentNotice('Confirming your Stripe payment…');
     } else if (params.get('payment') === 'cancelled') {
       setPaymentNotice('Checkout was cancelled. No payment was taken.');
     }
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session_id');
+    if (params.get('payment') !== 'success' || !sessionId || !user?.id) return;
+
+    let cancelled = false;
+    setCreditsLoading(true);
+    void (async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData.session?.access_token;
+        if (!token) throw new Error('Sign in again to verify your mastering purchase.');
+        const { data, error } = await supabase.functions.invoke<{
+          status?: 'paid' | 'pending' | 'failed';
+          credits?: number;
+          error?: string;
+        }>('verify-mastering-checkout', {
+          headers: { Authorization: `Bearer ${token}` },
+          body: { sessionId },
+        });
+        if (error) throw new Error(data?.error || error.message);
+        if (cancelled) return;
+        if (data?.status === 'paid' && Number.isInteger(data.credits)) {
+          setCredits(data.credits as number);
+          setPaymentNotice(`Payment confirmed. You have ${data.credits} mastering credit${data.credits === 1 ? '' : 's'}.`);
+          setCreditRefreshKey((key) => key + 1);
+        } else if (data?.status === 'pending') {
+          setPaymentNotice('Stripe is still processing your payment. Check again shortly.');
+        } else {
+          throw new Error(data?.error || 'The payment could not be verified.');
+        }
+      } catch (error) {
+        if (!cancelled) setPaymentNotice(error instanceof Error ? error.message : 'Could not verify your payment.');
+      } finally {
+        if (!cancelled) setCreditsLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user?.id, verificationRetryKey]);
 
   useEffect(() => {
     if (!downloadUrl) return;
@@ -346,6 +388,7 @@ export function MasterPage() {
 
   const hasAudio = originalBufferRef.current !== null;
   const duration = previewBufferRef.current?.duration ?? DEMO_DURATION;
+  const returnedFromMasteringCheckout = new URLSearchParams(window.location.search).get('payment') === 'success';
 
   const updateEQBand = (index: number, key: 'freq' | 'gain' | 'enabled', value: number | boolean) => {
     const newBands = [...settings.eq.bands];
@@ -386,13 +429,13 @@ export function MasterPage() {
         <div role="status" className="master-notice mx-6 mt-4 rounded-lg border border-studio-accent/30 bg-studio-accent/10 px-4 py-3 text-sm text-studio-text">
           {paymentNotice}
           {!user && <Link className="ml-2 font-semibold text-studio-accent underline" to="/account/login">Sign in</Link>}
-          {user && credits === 0 && !creditsLoading && paymentNotice.startsWith('Checkout returned successfully') && (
+          {user && returnedFromMasteringCheckout && credits === 0 && !creditsLoading && (
             <button
               type="button"
               className="ml-3 font-semibold text-studio-accent underline"
-              onClick={() => setCreditRefreshKey((key) => key + 1)}
+              onClick={() => setVerificationRetryKey((key) => key + 1)}
             >
-              Refresh credit balance
+              Check payment again
             </button>
           )}
         </div>

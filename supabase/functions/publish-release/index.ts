@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       return jsonError('Invalid or expired session', 401);
     }
 
-    const userRole = (user.app_metadata as { role?: string })?.role ?? user.user_metadata?.role;
+    const userRole = (user.app_metadata as { role?: string })?.role;
     const isAdmin = userRole === 'admin' || userRole === 'super_admin';
 
     if (!isAdmin) {

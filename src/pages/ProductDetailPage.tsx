@@ -10,6 +10,7 @@ export function ProductDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [selectedColor, setSelectedColor] = useState<string>('');
@@ -19,15 +20,22 @@ export function ProductDetailPage() {
   const { addItem } = useCart();
 
   useEffect(() => {
+    let active = true;
     (async () => {
       if (!slug) return;
       setLoading(true);
-      const { data } = await supabase
+      setLoadError(null);
+      const { data, error } = await supabase
         .from('products')
         .select('*, product_images(*), product_variants(*)')
         .eq('slug', slug)
         .eq('status', 'published')
         .maybeSingle();
+      if (!active) return;
+      if (error) {
+        console.error('Could not load product details:', error.message);
+        setLoadError('We could not load this product. Please try again.');
+      }
       setProduct(data as Product | null);
       if (data?.product_variants?.length) {
         const variants = data.product_variants as ProductVariant[];
@@ -37,7 +45,14 @@ export function ProductDetailPage() {
         setSelectedSize(sizes[0] ?? '');
       }
       setLoading(false);
-    })();
+    })().catch((error: unknown) => {
+      if (active) {
+        console.error('Could not load product details:', error instanceof Error ? error.message : 'Unknown error');
+        setLoadError('We could not load this product. Please try again.');
+        setLoading(false);
+      }
+    });
+    return () => { active = false; };
   }, [slug]);
 
   if (loading) {
@@ -47,8 +62,8 @@ export function ProductDetailPage() {
   if (!product) {
     return (
       <div className="container-base py-32 text-center">
-        <h1 className="text-display-lg">Product not found</h1>
-        <p className="mt-3 text-slate-400">This product may have been removed or is no longer available.</p>
+        <h1 className="text-display-lg">{loadError ? 'Product unavailable' : 'Product not found'}</h1>
+        <p className="mt-3 text-slate-400">{loadError ?? 'This product may have been removed or is no longer available.'}</p>
         <Link to="/shop" className="btn-primary mt-8">Back to Shop</Link>
       </div>
     );
@@ -195,13 +210,14 @@ export function ProductDetailPage() {
                   <Plus size={14} />
                 </button>
               </div>
-              <button
-                onClick={handleAddToBag}
-                disabled={soldOut}
-                className="btn-primary flex-1"
-              >
-                {added ? <><Check size={16} /> Added to Bag</> : soldOut ? 'Sold Out' : <><ShoppingBag size={16} /> Add to Bag</>}
-              </button>
+               <button
+                 onClick={handleAddToBag}
+                 disabled={soldOut}
+                 className="btn-primary flex-1 relative overflow-hidden group/bag"
+               >
+                 {added ? <><Check size={16} /> Added to Bag</> : soldOut ? 'Sold Out' : <><ShoppingBag size={16} /> Add to Bag</>}
+                 <span className="absolute inset-0 bg-gradient-to-r from-accent via-transparent to-accent opacity-0 group-hover/bag:opacity-30 transition-opacity duration-500" />
+               </button>
               <button className="border border-jet/15 p-3.5 hover:bg-jet hover:text-bone transition-colors" aria-label="Add to wishlist">
                 <Heart size={18} strokeWidth={1.5} />
               </button>

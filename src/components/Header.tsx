@@ -75,6 +75,8 @@ export function Header() {
                 className={`2xl:hidden ${textColor}`}
                 onClick={() => setMobileOpen(true)}
                 aria-label="Open menu"
+                aria-expanded={mobileOpen}
+                aria-controls="mobile-navigation"
               >
                 <Menu size={22} strokeWidth={1.5} />
               </button>
@@ -156,10 +158,10 @@ export function Header() {
       {mobileOpen && (
         <div className="fixed inset-0 z-[60] 2xl:hidden">
           <div className="absolute inset-0 bg-jet/60 backdrop-blur-sm animate-fade-in" onClick={() => setMobileOpen(false)} />
-          <div className="absolute left-0 top-0 h-full w-[85%] max-w-sm bg-jet text-bone shadow-2xl flex flex-col animate-fade-in">
+          <div id="mobile-navigation" role="dialog" aria-modal="true" aria-label="Site navigation" className="absolute left-0 top-0 h-full w-[88%] max-w-sm bg-jet text-bone shadow-2xl flex flex-col animate-fade-in">
             <div className="flex items-center justify-between px-6 h-16 border-b border-bone/10">
               <AB16Logo variant="light" />
-              <button onClick={() => setMobileOpen(false)} aria-label="Close menu">
+              <button onClick={() => setMobileOpen(false)} aria-label="Close menu" autoFocus>
                 <X size={22} strokeWidth={1.5} />
               </button>
             </div>
@@ -208,13 +210,22 @@ function DesktopNavLink({ label, to, textColor, icon: Icon }: { label: string; t
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.15em] ${textColor} transition-opacity hover:opacity-60 ${
+        `flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.15em] ${textColor} transition-opacity hover:opacity-60 relative ${
           isActive ? 'opacity-100' : 'opacity-75'
         }`
       }
     >
-      {Icon && <Icon size={14} />}
-      {label}
+      {({ isActive }) => (
+        <>
+          {Icon && <Icon size={14} />}
+          {label}
+          <span
+            className={`absolute -bottom-1 left-0 h-px bg-accent transition-all duration-300 ease-out-expo ${
+              isActive ? 'w-full opacity-100' : 'w-0 opacity-0 group-hover:w-full group-hover:opacity-60'
+            }`}
+          />
+        </>
+      )}
     </NavLink>
   );
 }
@@ -226,7 +237,8 @@ function AnnouncementBar() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from('site_settings').select('announcement_text, announcement_active').limit(1).maybeSingle();
+      const { data, error } = await supabase.from('site_settings').select('announcement_text, announcement_active').limit(1).maybeSingle();
+      if (error) console.error('Could not load announcement settings:', error.message);
       if (data) {
         setActive(data.announcement_active);
         if (data.announcement_text) setText(data.announcement_text);

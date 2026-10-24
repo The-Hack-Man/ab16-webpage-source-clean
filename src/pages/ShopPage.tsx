@@ -13,6 +13,7 @@ export function ShopPage({ filter }: { filter?: 'new' | 'collection' }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
 
   const selectedCategories = useMemo(() => searchParams.get('category')?.split(',').filter(Boolean) ?? [], [searchParams]);
@@ -22,18 +23,29 @@ export function ShopPage({ filter }: { filter?: 'new' | 'collection' }) {
   const maxPrice = searchParams.get('maxPrice');
 
   useEffect(() => {
+    let active = true;
     (async () => {
       setLoading(true);
+      setLoadError(null);
       let query = supabase.from('products').select('*, product_images(*), product_variants(*)').eq('status', 'published');
       if (filter === 'new') query = query.eq('is_new_arrival', true);
       if (filter === 'collection') query = query.not('collection_slug', 'is', null);
-      if (maxPrice) query = query.lte('price', parseInt(maxPrice));
+      const parsedMaxPrice = maxPrice ? Number(maxPrice) : NaN;
+      if (Number.isFinite(parsedMaxPrice) && parsedMaxPrice >= 0) query = query.lte('price', parsedMaxPrice);
       query = query.order('created_at', { ascending: false });
-      const { data } = await query;
-      setProducts(data as Product[] ?? []);
+      const { data, error } = await query;
+      if (!active) return;
+      if (error) {
+        setLoadError('The catalogue could not be loaded. Please try again.');
+        console.error('Could not load product catalogue:', error.message);
+        setProducts([]);
+      } else {
+        setProducts(data as Product[] ?? []);
+      }
       setLoading(false);
     })();
-  }, [filter, sort, maxPrice]);
+    return () => { active = false; };
+  }, [filter, maxPrice]);
 
   const filtered = useMemo(() => {
     let result = products;
@@ -62,7 +74,7 @@ export function ShopPage({ filter }: { filter?: 'new' | 'collection' }) {
         <div className="container-base py-12 lg:py-16">
           <p className="section-label mb-3">AB16 Clothing</p>
           <h1 className="text-display-lg">{title}</h1>
-          <p className="mt-3 text-sm text-slate-400">{filtered.length} {filtered.length === 1 ? 'product' : 'products'} — first drop coming soon, notify me on each product.</p>
+          <p className="mt-3 text-sm text-slate-400">{filtered.length} {filtered.length === 1 ? 'piece' : 'pieces'} · Independent Aberdeen streetwear</p>
         </div>
       </div>
 
@@ -72,6 +84,8 @@ export function ShopPage({ filter }: { filter?: 'new' | 'collection' }) {
           <button
             className="flex items-center gap-2 text-sm font-medium border border-jet/15 px-4 py-2.5 hover:bg-jet hover:text-bone transition-colors"
             onClick={() => setShowFilters((s) => !s)}
+            aria-expanded={showFilters}
+            aria-controls="mobile-filter-drawer"
           >
             <SlidersHorizontal size={16} strokeWidth={1.5} />
             Filters
@@ -119,13 +133,14 @@ export function ShopPage({ filter }: { filter?: 'new' | 'collection' }) {
 
           {/* Product grid */}
           <div className="flex-1">
+            {loadError && <div className="mb-6 border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">{loadError}<button className="ml-3 font-semibold underline" onClick={() => window.location.reload()}>Reload</button></div>}
             {loading ? (
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
                 {[0, 1, 2, 3, 4, 5].map((i) => (
                   <div key={i} className="aspect-[4/5] bg-slate-100 animate-pulse" />
                 ))}
               </div>
-            ) : filtered.length > 0 ? (
+            ) : loadError ? null : filtered.length > 0 ? (
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
                 {filtered.map((p) => <ProductCard key={p.id} product={p} />)}
               </div>
@@ -144,7 +159,7 @@ export function ShopPage({ filter }: { filter?: 'new' | 'collection' }) {
       {showFilters && (
         <div className="lg:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-jet/50 backdrop-blur-sm" onClick={() => setShowFilters(false)} />
-          <div className="absolute right-0 top-0 h-full w-[85%] max-w-sm bg-bone overflow-y-auto p-6">
+          <div id="mobile-filter-drawer" role="dialog" aria-modal="true" aria-label="Product filters" className="absolute right-0 top-0 h-full w-[88%] max-w-sm bg-bone overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-semibold">Filters</h2>
               <button onClick={() => setShowFilters(false)}><X size={22} /></button>

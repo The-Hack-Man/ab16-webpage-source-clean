@@ -152,22 +152,13 @@ export function AdminReleaseEdit() {
         throw new Error('You must be signed in to publish releases');
       }
 
-      const res = await fetch('/api/publish-release', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
+      const { data: result, error: publishError } = await supabase.functions.invoke('publish-release', {
+        body: {
           releaseId: id,
           pushToStreaming: false,
-        }),
+        },
       });
-
-      const result = await res.json();
-      if (!res.ok) {
-        throw new Error(result.error || 'Publish request failed');
-      }
+      if (publishError) throw new Error(publishError.message || 'Publish request failed');
 
       if (result.result?.affectedPaths) {
         setPublishSuccess(true);
