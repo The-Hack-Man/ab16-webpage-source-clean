@@ -10,6 +10,7 @@ import {
   type OrderRecord,
   type PaymentRecord,
 } from './idempotency.ts';
+import { runForLiveStripeEvent } from './livemode_guard.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -176,13 +177,20 @@ async function processStripeEvent(
   stripe: Stripe,
   event: Stripe.Event,
 ) {
-  // This deployed endpoint is for live payments. Test-mode events must never
-  // grant credits, mutate production orders, send owner emails, or contact Printful.
-  if (!event.livemode) {
-    console.warn(`Ignoring test-mode Stripe event ${event.id} (${event.type}) on the live webhook.`);
-    return;
-  }
+  return runForLiveStripeEvent(
+    event,
+    () => processLiveStripeEvent(supabase, stripe, event),
+    (testEvent) => {
+      console.warn(`Ignoring test-mode Stripe event ${testEvent.id} (${testEvent.type}) on the live webhook.`);
+    },
+  );
+}
 
+async function processLiveStripeEvent(
+  supabase: ReturnType<typeof createClient>,
+  stripe: Stripe,
+  event: Stripe.Event,
+) {
   if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
     const session = event.data.object as Stripe.Checkout.Session;
     if (session.payment_status !== 'paid') {

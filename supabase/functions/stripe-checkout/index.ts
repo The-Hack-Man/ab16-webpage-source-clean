@@ -1,5 +1,6 @@
 import Stripe from 'https://esm.sh/stripe@16.12.0?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { resolveSiteOrigin } from '../_shared/site_origin.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -54,7 +55,10 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const { package: packageName, origin } = body;
-    const siteOrigin = new URL(Deno.env.get('PUBLIC_SITE_URL') ?? 'https://ab16clothing.co.uk').origin;
+    const siteOrigin = resolveSiteOrigin({
+      PUBLIC_SITE_URL: Deno.env.get('PUBLIC_SITE_URL'),
+      SITE_URL: Deno.env.get('SITE_URL'),
+    });
     let checkoutOrigin: string;
     try {
       checkoutOrigin = new URL(origin).origin;
