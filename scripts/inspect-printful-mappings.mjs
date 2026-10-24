@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 /**
  * Read-only AB16 ↔ Printful reconciliation.
- *
- * Uses PRINTFUL_API_KEY and Supabase service-role credentials from process.env
- * or a local .env file. Secrets are never printed. This script performs GETs
- * only; it never writes mappings or submits orders.
+ * Uses credentials from process.env or .env. Never prints secrets.
+ * GET-only: never writes mappings or submits orders.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,9 +17,7 @@ function loadLocalEnv() {
     if (equals < 1) continue;
     const key = line.slice(0, equals).trim();
     let value = line.slice(equals + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
     if (!process.env[key]) process.env[key] = value;
   }
 }
@@ -31,7 +27,7 @@ const printfulKey = process.env.PRINTFUL_API_KEY;
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
 if (!printfulKey || !supabaseUrl || !supabaseKey) {
-  console.error('Missing required environment variables: PRINTFUL_API_KEY, SUPABASE_URL, and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SECRET_KEY).');
+  console.error('Missing PRINTFUL_API_KEY, SUPABASE_URL, or SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SECRET_KEY).');
   process.exit(2);
 }
 
@@ -40,14 +36,8 @@ async function getJson(url, headers, label) {
   if (!response.ok) throw new Error(label + ' failed with HTTP ' + response.status);
   return response.json();
 }
-
 const printfulHeaders = { Authorization: 'Bearer ' + printfulKey, Accept: 'application/json' };
-const supabaseHeaders = {
-  apikey: supabaseKey,
-  Authorization: 'Bearer ' + supabaseKey,
-  Accept: 'application/json',
-};
-
+const supabaseHeaders = { apikey: supabaseKey, Authorization: 'Bearer ' + supabaseKey, Accept: 'application/json' };
 const databaseUrl = new URL('/rest/v1/product_variants', supabaseUrl);
 databaseUrl.searchParams.set('select', 'id,sku,size,color,printful_variant_id,printful_sync_variant_id,products(name,slug)');
 databaseUrl.searchParams.set('order', 'sku.asc');
@@ -55,13 +45,9 @@ databaseUrl.searchParams.set('order', 'sku.asc');
 const dbVariants = await getJson(databaseUrl, supabaseHeaders, 'Supabase variant read');
 const list = await getJson('https://api.printful.com/store/products?limit=100&offset=0', printfulHeaders, 'Printful store product list');
 const listResult = list?.result ?? {};
-const products = Array.isArray(listResult.sync_products)
-  ? listResult.sync_products
-  : Array.isArray(listResult)
-    ? listResult
-    : Array.isArray(listResult.products)
-      ? listResult.products
-      : [];
+const products = Array.isArray(listResult.sync_products) ? listResult.sync_products
+  : Array.isArray(listResult) ? listResult
+  : Array.isArray(listResult.products) ? listResult.products : [];
 
 const details = [];
 for (const listed of products) {
@@ -71,31 +57,38 @@ for (const listed of products) {
   const result = detail?.result ?? {};
   const product = result.sync_product ?? result.product ?? listed.sync_product ?? listed;
   const variants = result.sync_variants ?? result.variants ?? listed.sync_variants ?? [];
-  for (const variant of variants) {
-    details.push({
-      printful_product_id: product.id ?? productId,
-      printful_product_name: product.name ?? listed.name ?? null,
-      sync_variant_id: variant.id ?? null,
-      catalog_variant_id: variant.variant_id ?? variant.product?.variant_id ?? null,
-      sku: variant.sku ?? null,
-      variant_name: variant.name ?? variant.product?.name ?? null,
-      retail_price: variant.retail_price ?? null,
-      currency: variant.currency ?? null,
-      size: variant.size ?? null,
-      color: variant.color ?? null,
-      image: variant.files?.find?.((file) => file.type === 'preview')?.preview_url ?? variant.product?.image ?? null,
-    });
-  }
+  for (const variant of variants) details.push({
+    printful_product_id: product.id ?? productId,
+    printful_product_name: product.name ?? listed.name ?? null,
+    sync_variant_id: variant.id ?? null,
+    catalog_variant_id: variant.variant_id ?? variant.product?.variant_id ?? null,
+    sku: variant.sku ?? null,
+    variant_name: variant.name ?? variant.product?.name ?? null,
+    retail_price: variant.retail_price ?? null,
+    currency: variant.currency ?? null,
+    size: variant.size ?? null,
+    color: variant.color ?? null,
+    image: variant.files?.find?.((file) => file.type === 'preview')?.preview_url ?? variant.product?.image ?? null,
+  });
 }
 
 const normal = (value) => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+const hasToken = (haystack, needle) => {
+  const value = String(haystack ?? '');
+  const token = String(needle ?? '').trim();
+  if (!token) return false;
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(^|[^a-z0-9])' + escaped + '($|[^a-z0-9])', 'i').test(value);
+};
+
 const reconciliation = dbVariants.map((db) => {
   const product = Array.isArray(db.products) ? db.products[0] : db.products;
   const skuMatches = db.sku ? details.filter((remote) => normal(remote.sku) === normal(db.sku)) : [];
   const exactVariantMatches = skuMatches.filter((remote) => {
-    const remoteText = normal([remote.variant_name, remote.size, remote.color].filter(Boolean).join(' '));
-    const dbText = normal([db.size, db.color].filter(Boolean).join(' '));
-    return remoteText.includes(normal(db.size)) && remoteText.includes(normal(db.color)) && dbText.length > 0;
+    const name = remote.variant_name ?? '';
+    const sizeMatches = normal(remote.size) === normal(db.size) || hasToken(name, db.size);
+    const colorMatches = normal(remote.color) === normal(db.color) || hasToken(name, db.color);
+    return sizeMatches && colorMatches && Boolean(db.size) && Boolean(db.color);
   });
   return {
     db_product: product?.name ?? null,
@@ -108,7 +101,7 @@ const reconciliation = dbVariants.map((db) => {
     current_printful_sync_variant_id: db.printful_sync_variant_id,
     exact_sku_match_count: skuMatches.length,
     sku_and_size_color_match_count: exactVariantMatches.length,
-    candidates: (skuMatches.length ? skuMatches : []).map((remote) => ({
+    candidates: skuMatches.map((remote) => ({
       printful_product_id: remote.printful_product_id,
       printful_product_name: remote.printful_product_name,
       sync_variant_id: remote.sync_variant_id,
@@ -121,7 +114,8 @@ const reconciliation = dbVariants.map((db) => {
       image: remote.image,
       exact_sku_and_size_color: exactVariantMatches.some((match) => match.sync_variant_id === remote.sync_variant_id),
     })),
-    status: exactVariantMatches.length === 1 ? 'candidate_requires_artwork_and_store_verification' : skuMatches.length ? 'ambiguous_or_inconsistent_sku_match' : 'no_exact_sku_match',
+    status: exactVariantMatches.length === 1 ? 'candidate_requires_artwork_and_store_verification'
+      : skuMatches.length ? 'ambiguous_or_inconsistent_sku_match' : 'no_exact_sku_match',
   };
 });
 
