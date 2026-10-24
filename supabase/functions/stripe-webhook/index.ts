@@ -10,6 +10,7 @@ import {
   type OrderRecord,
   type PaymentRecord,
 } from './idempotency.ts';
+import { runForLiveStripeEvent } from './livemode_guard.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -172,6 +173,20 @@ Deno.serve(async (req) => {
 });
 
 async function processStripeEvent(
+  supabase: ReturnType<typeof createClient>,
+  stripe: Stripe,
+  event: Stripe.Event,
+) {
+  return runForLiveStripeEvent(
+    event,
+    () => processLiveStripeEvent(supabase, stripe, event),
+    (testEvent) => {
+      console.warn(`Ignoring test-mode Stripe event ${testEvent.id} (${testEvent.type}) on the live webhook.`);
+    },
+  );
+}
+
+async function processLiveStripeEvent(
   supabase: ReturnType<typeof createClient>,
   stripe: Stripe,
   event: Stripe.Event,

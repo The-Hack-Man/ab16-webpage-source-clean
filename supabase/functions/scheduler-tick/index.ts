@@ -203,7 +203,7 @@ Deno.serve(async (req) => {
       AUTOMATION_CONFIG,
       () => new Date(),
       async (job: JobRecord) => {
-        console.log(`[scheduler] Processing job ${job.id} of type ${job.type}`, job.payload);
+        console.info(`[scheduler] Processing job ${job.id} of type ${job.type}`);
         await db.from('audit_logs').insert({
           actor_id: job.correlationId,
           action: `job.${job.type}.processed`,
