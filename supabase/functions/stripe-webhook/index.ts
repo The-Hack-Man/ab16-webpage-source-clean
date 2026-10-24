@@ -221,7 +221,13 @@ async function processStripeEvent(
     // ── Clothing order processing (idempotent via order.payment_status check) ──
     const orderId = session.metadata?.order_id;
     if (orderId) {
-      await processClothingOrder(supabase, session, orderId);
+      // Never let a test-mode Checkout Session create or confirm a real Printful order.
+      // Acknowledge the event normally so Stripe does not retry a deliberately skipped test event.
+      if (!session.livemode) {
+        console.warn(`Skipping clothing fulfilment for test-mode Checkout Session ${session.id} (order ${orderId}).`);
+      } else {
+        await processClothingOrder(supabase, session, orderId);
+      }
     }
   }
 
