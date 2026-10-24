@@ -39,3 +39,8 @@ __pycache__/
 !.env.example
 *.pem
 *.key
+clive_web_fixer/
+test-results/
+playwright-report/
+printful-reconciliation.json
+test-printful-webhook.ps1

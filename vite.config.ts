@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
       exclude: ['lucide-react'],
     },
     test: {
-      exclude: ['tests/**', 'node_modules'],
+      exclude: ['tests/**', 'node_modules', 'clive_web_fixer/**', 'test-results/**'],
     },
     server: {
       proxy: {
