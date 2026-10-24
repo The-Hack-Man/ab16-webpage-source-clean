@@ -176,6 +176,13 @@ async function processStripeEvent(
   stripe: Stripe,
   event: Stripe.Event,
 ) {
+  // This deployed endpoint is for live payments. Test-mode events must never
+  // grant credits, mutate production orders, send owner emails, or contact Printful.
+  if (!event.livemode) {
+    console.warn(`Ignoring test-mode Stripe event ${event.id} (${event.type}) on the live webhook.`);
+    return;
+  }
+
   if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
     const session = event.data.object as Stripe.Checkout.Session;
     if (session.payment_status !== 'paid') {
@@ -221,13 +228,7 @@ async function processStripeEvent(
     // ── Clothing order processing (idempotent via order.payment_status check) ──
     const orderId = session.metadata?.order_id;
     if (orderId) {
-      // Never let a test-mode Checkout Session create or confirm a real Printful order.
-      // Acknowledge the event normally so Stripe does not retry a deliberately skipped test event.
-      if (!session.livemode) {
-        console.warn(`Skipping clothing fulfilment for test-mode Checkout Session ${session.id} (order ${orderId}).`);
-      } else {
-        await processClothingOrder(supabase, session, orderId);
-      }
+      await processClothingOrder(supabase, session, orderId);
     }
   }
 
