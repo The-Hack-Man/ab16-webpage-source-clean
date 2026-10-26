@@ -2,8 +2,11 @@ import Stripe from 'https://esm.sh/stripe@16.12.0?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { verifyCheckoutOrder } from './verification.ts';
 
+// Match the production checkout and avoid stale preview URLs from env secrets.
+const SITE_ORIGIN = 'https://ab16clothing.co.uk';
+const IS_TEST_DEPLOYMENT = Deno.env.get('STRIPE_EXPECT_LIVE_MODE') === 'false';
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': IS_TEST_DEPLOYMENT ? '*' : SITE_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };

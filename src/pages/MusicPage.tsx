@@ -6,10 +6,12 @@ import type { MusicRelease, Icon } from '@/types';
 import { ReleaseCard } from '@/components/ReleaseCard';
 import { UpcomingAlbumBanner } from '@/components/UpcomingAlbumBanner';
 import { formatDate } from '@/lib/format';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 const HERO_IMAGE = 'https://images.pexels.com/photos/31510586/pexels-photo-31510586.jpeg?auto=compress&cs=tinysrgb&w=1920';
 
 export function MusicPage() {
+  const settings = useSiteSettings();
   const [releases, setReleases] = useState<MusicRelease[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -33,7 +35,7 @@ export function MusicPage() {
     <div className="bg-jet text-bone min-h-screen">
       {/* Hero */}
       <section className="relative min-h-[70vh] overflow-hidden">
-        <img src={HERO_IMAGE} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover opacity-30 grayscale" />
+        <img src={settings?.music_hero_image_url || settings?.jamie_hero_image_url || HERO_IMAGE} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover opacity-30 grayscale" />
         <div className="absolute inset-0 bg-gradient-to-b from-jet/70 via-jet/75 to-jet" />
         <div className="relative container-base flex flex-col justify-end pt-28 pb-16 lg:pb-24">
           <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-bone/50 mb-5">Jamie G — Aberdeen</p>
@@ -46,11 +48,11 @@ export function MusicPage() {
             <Link to="/about/jamie-g" className="btn-outline-light">The Story <ArrowRight size={14} /></Link>
           </div>
           <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-xs uppercase tracking-[0.18em] text-bone/50">
-            <a href="https://open.spotify.com/artist/05IDis5l8XLJKkWp7CAOcC" target="_blank" rel="noopener noreferrer" className="hover:text-bone">Spotify</a>
-            <a href="https://music.apple.com/us/artist/jamie-g/1815382137" target="_blank" rel="noopener noreferrer" className="hover:text-bone">Apple Music</a>
-            <a href="https://www.youtube.com/channel/UCDTrDLZyf8YTXvKFTHOCkyg" target="_blank" rel="noopener noreferrer" className="hover:text-bone">YouTube</a>
-            <a href="https://music.amazon.co.uk/artists/B0F9SBKZVD/jamie-g" target="_blank" rel="noopener noreferrer" className="hover:text-bone">Amazon Music</a>
-            <a href="https://www.tiktok.com/@jamiegmusic" target="_blank" rel="noopener noreferrer" className="hover:text-bone">TikTok</a>
+            <a href={settings?.spotify_url || 'https://open.spotify.com/artist/05IDis5l8XLJKkWp7CAOcC'} target="_blank" rel="noopener noreferrer" className="hover:text-bone">Spotify</a>
+            <a href={settings?.apple_music_url || 'https://music.apple.com/us/artist/jamie-g/1815382137'} target="_blank" rel="noopener noreferrer" className="hover:text-bone">Apple Music</a>
+            <a href={settings?.youtube_url || 'https://www.youtube.com/channel/UCDTrDLZyf8YTXvKFTHOCkyg'} target="_blank" rel="noopener noreferrer" className="hover:text-bone">YouTube</a>
+            <a href={settings?.amazon_music_url || 'https://music.amazon.co.uk/artists/B0F9SBKZVD/jamie-g'} target="_blank" rel="noopener noreferrer" className="hover:text-bone">Amazon Music</a>
+            <a href={settings?.tiktok_url || 'https://www.tiktok.com/@jamiegmusic'} target="_blank" rel="noopener noreferrer" className="hover:text-bone">TikTok</a>
           </div>
         </div>
       </section>
@@ -114,7 +116,7 @@ export function MusicPage() {
             <iframe
               title="Jamie G on Spotify"
               className="w-full h-[352px] rounded-none"
-              src="https://open.spotify.com/embed/artist/05IDis5l8XLJKkWp7CAOcC?utm_source=generator"
+              src={`${(settings?.spotify_url || 'https://open.spotify.com/artist/05IDis5l8XLJKkWp7CAOcC').replace('open.spotify.com/', 'open.spotify.com/embed/')}?utm_source=generator`}
               allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
               loading="lazy"
             />

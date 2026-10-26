@@ -4,13 +4,19 @@ import {
   validateCustomerInfo,
   validateRequestedItems,
   buildLineItems,
+  stripeModeMatchesDeployment,
+  missingCheckoutReadinessSecrets,
   type CustomerInfo,
   type CheckoutItem,
 } from './checkout_validation.ts';
 
+// Keep production checkout pinned to the canonical storefront even if a stale
+// deployment secret still contains an old preview URL.
+const SITE_ORIGIN = 'https://ab16clothing.co.uk';
+const IS_TEST_DEPLOYMENT = Deno.env.get('STRIPE_EXPECT_LIVE_MODE') === 'false';
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Origin': IS_TEST_DEPLOYMENT ? '*' : SITE_ORIGIN,
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-checkout-readiness',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
@@ -28,14 +34,53 @@ Deno.serve(async (req) => {
   let supabaseClient: ReturnType<typeof createClient> | null = null;
 
   try {
-    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
+    const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')?.trim();
+    const expectedStripeMode = Deno.env.get('STRIPE_EXPECT_LIVE_MODE');
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SECRET_KEY');
-    const printfulApiKey = Deno.env.get('PRINTFUL_API_KEY');
-    const resendApiKey = Deno.env.get('RESEND_API_KEY');
-    const adminOrderEmail = Deno.env.get('ADMIN_ORDER_EMAIL');
-    const fromEmail = Deno.env.get('FROM_EMAIL');
-    if (!stripeKey || !supabaseUrl || !serviceRoleKey || !printfulApiKey || !resendApiKey || !adminOrderEmail || !fromEmail) {
+
+    if (req.headers.get('x-checkout-readiness') === 'true') {
+      if (!supabaseUrl || !serviceRoleKey) {
+        return json({ error: 'Supabase server configuration is incomplete.' }, 503);
+      }
+      const supabase = supabaseClient = createClient(supabaseUrl, serviceRoleKey);
+      const accessToken = req.headers.get('Authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
+      if (!accessToken) return json({ error: 'Administrator sign-in is required.' }, 401);
+      const { data: authData, error: authError } = await supabase.auth.getUser(accessToken);
+      if (authError || !authData.user) return json({ error: 'Your session is invalid or expired. Sign in again.' }, 401);
+      const role = (authData.user.app_metadata as { role?: string } | undefined)?.role;
+      if (role !== 'admin' && role !== 'super_admin') return json({ error: 'Administrator access is required.' }, 403);
+
+      const missing = missingCheckoutReadinessSecrets({
+        stripeSecretKey: stripeKey,
+        expectedStripeMode,
+        printfulApiKey: Deno.env.get('PRINTFUL_API_KEY'),
+        resendApiKey: Deno.env.get('RESEND_API_KEY'),
+        adminOrderEmail: Deno.env.get('ADMIN_ORDER_EMAIL'),
+        fromEmail: Deno.env.get('FROM_EMAIL'),
+      });
+      return json({ ready: missing.length === 0, missing, mode: expectedStripeMode === 'false' ? 'test' : 'live' }, 200);
+    }
+
+    if (!stripeKey || !stripeModeMatchesDeployment(stripeKey, expectedStripeMode)
+      || !supabaseUrl || !serviceRoleKey) {
+      // Record only presence and mode categories; never log a credential or its fingerprint.
+      const stripeKeyMode = /^(?:sk|rk)_(test|live)_/.exec(stripeKey ?? '')?.[1] ?? 'missing_or_unsupported';
+      console.error('create-checkout configuration rejected', {
+        stripeKeyPresent: Boolean(stripeKey),
+        stripeKeyMode,
+        expectedStripeMode: expectedStripeMode === 'false' ? 'test' : expectedStripeMode === 'true' ? 'live' : 'missing_or_unsupported',
+        supabaseUrlPresent: Boolean(supabaseUrl),
+        serviceRoleKeyPresent: Boolean(serviceRoleKey),
+      });
+      return json({ error: 'Secure clothing checkout is not configured for this payment mode.' }, 503);
+    }
+
+    const isLiveMode = expectedStripeMode !== 'false';
+    if (isLiveMode && (!Deno.env.get('PRINTFUL_API_KEY')?.trim()
+      || !Deno.env.get('RESEND_API_KEY')?.trim()
+      || !Deno.env.get('ADMIN_ORDER_EMAIL')?.trim()
+      || !Deno.env.get('FROM_EMAIL')?.trim())) {
       return json({ error: 'Secure clothing checkout is temporarily unavailable while payment, fulfilment, or order notifications are configured.' }, 503);
     }
 
@@ -60,14 +105,20 @@ Deno.serve(async (req) => {
     const { quantities: requestedQuantities, error: itemsError } = validateRequestedItems(requestedItems);
     if (itemsError) return json({ error: itemsError.error }, itemsError.statusCode);
 
-    const siteOrigin = new URL(Deno.env.get('PUBLIC_SITE_URL') ?? 'https://ab16clothing.co.uk').origin;
+    const siteOrigin = SITE_ORIGIN;
     let checkoutOrigin: string;
     try {
       checkoutOrigin = new URL(body.origin).origin;
     } catch {
       return json({ error: 'A valid checkout origin is required.' }, 400);
     }
-    if (!new Set([siteOrigin, 'http://localhost:5173', 'http://127.0.0.1:5173']).has(checkoutOrigin)) {
+    const allowedCheckoutOrigins = new Set([siteOrigin]);
+    if (IS_TEST_DEPLOYMENT) {
+      for (const host of ['localhost', '127.0.0.1']) {
+        for (const port of [5173, 5174, 5176, 5177]) allowedCheckoutOrigins.add(`http://${host}:${port}`);
+      }
+    }
+    if (!allowedCheckoutOrigins.has(checkoutOrigin)) {
       return json({ error: 'Checkout is not available from this site origin.' }, 400);
     }
     const successUrl = `${checkoutOrigin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
@@ -76,7 +127,7 @@ Deno.serve(async (req) => {
     const variantIds = [...requestedQuantities.keys()];
     const { data: variants, error: variantError } = await supabase
       .from('product_variants')
-      .select('id, size, color, stock, price_override, printful_sync_variant_id, product_id, products(id, name, slug, price, status, available_for_sale)')
+      .select('id, size, color, stock, price_override, printful_sync_variant_id, printful_availability_status, product_id, products(id, name, slug, price, status, available_for_sale)')
       .in('id', variantIds);
 
     if (variantError || !variants?.length) {

@@ -1,12 +1,15 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import {
-  InMemoryEventDispatcher,
   runOutboxTick,
   runSchedulerTick,
   backoffDelay,
   type AutomationConfig,
-  type EventHandler,
+  type DomainEvent,
+  type EventDispatcher,
   type JobRecord,
+  type JobType,
+  type OutboxEventType,
+  isVersionedRunPayload,
 } from '../../../engine/engine/index.ts';
 
 const AUTOMATION_CONFIG: AutomationConfig = {
@@ -17,14 +20,110 @@ const AUTOMATION_CONFIG: AutomationConfig = {
   leaseMs: 300000,
 };
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function safeEqual(provided: string, expected: string): boolean {
+  const encoder = new TextEncoder();
+  const providedBytes = encoder.encode(provided);
+  const expectedBytes = encoder.encode(expected);
+  if (providedBytes.length !== expectedBytes.length) return false;
+
+  let difference = 0;
+  for (let index = 0; index < expectedBytes.length; index++) {
+    difference |= providedBytes[index] ^ expectedBytes[index];
+  }
+  return difference === 0;
+}
+
+function getHealthCheckRunId(payload: unknown): string {
+  if (!isVersionedRunPayload(payload)) throw new Error('Invalid or unsupported health-check payload');
+  return payload.runId;
+}
+
+const outboxHandlers: Record<OutboxEventType, (event: DomainEvent) => Promise<void>> = {
+  'control_desk.health_check.requested': async (event) => {
+    const runId = getHealthCheckRunId(event.payload);
+    const { error: insertError } = await db.from('jobs').insert({
+      type: 'control_desk.health_check',
+      status: 'pending',
+      max_attempts: AUTOMATION_CONFIG.defaultMaxAttempts,
+      correlation_id: event.correlationId ?? runId,
+      payload: { schemaVersion: 1, runId },
+      source_event_id: event.id,
+    }).select('id').maybeSingle();
+
+    // A previously handled delivery already created the same job.
+    if (insertError && insertError.code !== '23505') throw insertError;
+    const { data: job, error: lookupError } = await db.from('jobs')
+      .select('id').eq('source_event_id', event.id).single();
+    if (lookupError || !job) throw lookupError ?? new Error('Health-check job was not persisted');
+    const { error: runError } = await db.from('control_desk_runs')
+      .update({ job_id: job.id }).eq('id', runId);
+    if (runError) throw runError;
+  },
+};
+
+let db: ReturnType<typeof createClient>;
+
+const jobHandlers: Record<JobType, (job: JobRecord) => Promise<void>> = {
+  'control_desk.health_check': async (job) => {
+    const runId = getHealthCheckRunId(job.payload);
+    try {
+      const [products, available, orders, pendingJobs, pendingOutbox] = await Promise.all([
+        db.from('products').select('id', { count: 'exact', head: true }).eq('status', 'published'),
+        db.from('products').select('id', { count: 'exact', head: true }).eq('status', 'published').eq('available_for_sale', true),
+        db.from('orders').select('id', { count: 'exact', head: true }),
+        db.from('jobs').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        db.from('outbox').select('id', { count: 'exact', head: true }).eq('processed', false),
+      ]);
+      const firstError = [products.error, available.error, orders.error, pendingJobs.error, pendingOutbox.error].find(Boolean);
+      if (firstError) throw firstError;
+
+      const result = {
+        checkedAt: new Date().toISOString(),
+        publishedProducts: products.count ?? 0,
+        saleableProducts: available.count ?? 0,
+        orders: orders.count ?? 0,
+        pendingJobs: pendingJobs.count ?? 0,
+        pendingOutboxEvents: pendingOutbox.count ?? 0,
+      };
+      const { error } = await db.from('control_desk_runs').update({
+        status: 'completed',
+        result,
+        completed_at: result.checkedAt,
+      }).eq('id', runId);
+      if (error) throw error;
+    } catch (error) {
+      if (job.attempts + 1 >= job.maxAttempts) {
+        await db.from('control_desk_runs').update({ status: 'failed', completed_at: new Date().toISOString() }).eq('id', runId);
+      }
+      throw error;
+    }
+  },
 };
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') {
+    return jsonResponse({ error: 'Method not allowed' }, 405);
+  }
+
+  const expectedSecret = Deno.env.get('SCHEDULER_SECRET') ?? '';
+  const providedSecret = req.headers.get('x-scheduler-secret') ?? '';
+  if (!expectedSecret) {
+    console.error('[scheduler] Missing SCHEDULER_SECRET configuration');
+    return jsonResponse({ error: 'Server not configured' }, 503);
+  }
+  if (!safeEqual(providedSecret, expectedSecret)) {
+    return jsonResponse({ error: 'Unauthorized' }, 401);
+  }
+  if (Object.keys(outboxHandlers).length === 0 || Object.keys(jobHandlers).length === 0) {
+    console.error('[scheduler] Refusing to claim work because handlers are not configured');
+    return jsonResponse({ error: 'Worker handlers are not configured' }, 503);
   }
 
   try {
@@ -32,28 +131,23 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
     if (!supabaseUrl || !serviceRoleKey) {
-      return new Response(JSON.stringify({ error: 'Server not configured' }), {
-        status: 503,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      console.error('[scheduler] Missing Supabase configuration');
+      return jsonResponse({ error: 'Server not configured' }, 503);
     }
 
-    const db = createClient(supabaseUrl, serviceRoleKey);
-    const workerId = `scheduler-${new Date().toISOString().slice(0, 10)}`;
+    db = createClient(supabaseUrl, serviceRoleKey);
+    // The claim RPCs require a UUID and each invocation needs its own lease owner.
+    const workerId = crypto.randomUUID();
 
-    const dispatcher = new InMemoryEventDispatcher();
-
-    const notifyHandler: EventHandler = {
-      type: 'fan.notified',
-      handle: async () => {},
+    const dispatcher: EventDispatcher = {
+      dispatch: async (event: DomainEvent) => {
+        const handler = Object.prototype.hasOwnProperty.call(outboxHandlers, event.type)
+          ? outboxHandlers[event.type]
+          : undefined;
+        if (!handler) throw new Error(`No handler configured for outbox event type: ${event.type}`);
+        await handler(event);
+      },
     };
-    dispatcher.register(notifyHandler);
-
-    const homepageHandler: EventHandler = {
-      type: 'homepage.updated',
-      handle: async () => {},
-    };
-    dispatcher.register(homepageHandler);
 
     const outboxTickResult = await runOutboxTick(
       {
@@ -203,31 +297,25 @@ Deno.serve(async (req) => {
       AUTOMATION_CONFIG,
       () => new Date(),
       async (job: JobRecord) => {
-        console.log(`[scheduler] Processing job ${job.id} of type ${job.type}`, job.payload);
-        await db.from('audit_logs').insert({
-          actor_id: job.correlationId,
-          action: `job.${job.type}.processed`,
-          entity: 'job',
-          entity_id: job.id,
-          details: JSON.stringify({ attempts: job.attempts, payload: job.payload }),
-        });
+        const handler = Object.prototype.hasOwnProperty.call(jobHandlers, job.type)
+          ? jobHandlers[job.type]
+          : undefined;
+        if (!handler) throw new Error(`No handler configured for job type: ${job.type}`);
+        await handler(job);
       },
       workerId,
     );
 
-    return new Response(JSON.stringify({
+    const summary = {
       success: true,
       outbox: { processed: outboxTickResult.processed, failed: outboxTickResult.failed },
       scheduler: { processed: schedulerTickResult.processed, failed: schedulerTickResult.failed, reclaimed: schedulerTickResult.reclaimed },
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    };
+    console.log('[scheduler] Tick completed', summary);
+    return jsonResponse(summary);
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return new Response(JSON.stringify({ error: message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error('[scheduler] Tick failed', e instanceof Error ? e.message : 'Unknown error');
+    return jsonResponse({ error: 'Scheduler tick failed' }, 500);
   }
 });
 

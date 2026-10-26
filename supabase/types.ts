@@ -382,6 +382,7 @@ export type Database = {
           max_attempts: number
           payload: Json | null
           scheduled_for: string
+          source_event_id: string | null
           status: string
           type: string
           updated_at: string
@@ -397,6 +398,7 @@ export type Database = {
           max_attempts?: number
           payload?: Json | null
           scheduled_for?: string
+          source_event_id?: string | null
           status?: string
           type: string
           updated_at?: string
@@ -412,9 +414,40 @@ export type Database = {
           max_attempts?: number
           payload?: Json | null
           scheduled_for?: string
+          source_event_id?: string | null
           status?: string
           type?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      control_desk_runs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          id: string
+          job_id: string | null
+          requested_by: string
+          result: Json | null
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          requested_by: string
+          result?: Json | null
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          job_id?: string | null
+          requested_by?: string
+          result?: Json | null
+          status?: string
         }
         Relationships: []
       }
@@ -1022,6 +1055,7 @@ export type Database = {
           id: string
           position: number
           product_id: string
+          source_key: string | null
           url: string
         }
         Insert: {
@@ -1030,6 +1064,7 @@ export type Database = {
           id?: string
           position?: number
           product_id: string
+          source_key?: string | null
           url: string
         }
         Update: {
@@ -1038,6 +1073,7 @@ export type Database = {
           id?: string
           position?: number
           product_id?: string
+          source_key?: string | null
           url?: string
         }
         Relationships: [
@@ -1116,6 +1152,9 @@ export type Database = {
           material_care: string | null
           name: string
           price: number
+          printful_managed: boolean
+          printful_product_id: number | null
+          printful_synced_at: string | null
           return_info: string | null
           seo_description: string | null
           seo_title: string | null
@@ -1142,6 +1181,9 @@ export type Database = {
           material_care?: string | null
           name: string
           price: number
+          printful_managed?: boolean
+          printful_product_id?: number | null
+          printful_synced_at?: string | null
           return_info?: string | null
           seo_description?: string | null
           seo_title?: string | null
@@ -1168,6 +1210,9 @@ export type Database = {
           material_care?: string | null
           name?: string
           price?: number
+          printful_managed?: boolean
+          printful_product_id?: number | null
+          printful_synced_at?: string | null
           return_info?: string | null
           seo_description?: string | null
           seo_title?: string | null
@@ -1203,6 +1248,12 @@ export type Database = {
           contact_email: string | null
           currency: string
           facebook_url: string | null
+          home_fashion_image_url: string | null
+          home_music_image_url: string | null
+          brand_story_image_url: string | null
+          jamie_hero_image_url: string | null
+          jamie_studio_image_url: string | null
+          music_hero_image_url: string | null
           hero_headline: string
           hero_image_url: string | null
           hero_subtext: string
@@ -1227,6 +1278,12 @@ export type Database = {
           contact_email?: string | null
           currency?: string
           facebook_url?: string | null
+          home_fashion_image_url?: string | null
+          home_music_image_url?: string | null
+          brand_story_image_url?: string | null
+          jamie_hero_image_url?: string | null
+          jamie_studio_image_url?: string | null
+          music_hero_image_url?: string | null
           hero_headline?: string
           hero_image_url?: string | null
           hero_subtext?: string
@@ -1251,6 +1308,12 @@ export type Database = {
           contact_email?: string | null
           currency?: string
           facebook_url?: string | null
+          home_fashion_image_url?: string | null
+          home_music_image_url?: string | null
+          brand_story_image_url?: string | null
+          jamie_hero_image_url?: string | null
+          jamie_studio_image_url?: string | null
+          music_hero_image_url?: string | null
           hero_headline?: string
           hero_image_url?: string | null
           hero_subtext?: string
@@ -1330,6 +1393,7 @@ export type Database = {
           type: string
         }[]
       }
+      request_control_desk_health_check: { Args: never; Returns: string }
       claim_next_outbox: {
         Args: { p_lease_ms: number; p_now: string; p_worker_id: string }
         Returns: {

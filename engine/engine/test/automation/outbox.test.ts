@@ -84,6 +84,18 @@ describe('InMemoryEventDispatcher', () => {
 });
 
 describe('runOutboxTick', () => {
+  it('preserves the durable outbox id as the dispatched event id for retry idempotency', async () => {
+    const store = new MockOutboxStore();
+    const entry = await store.enqueue({ eventType: 'test.event', payload: {}, version: 1, correlationId: 'c1', idempotencyKey: 'ik-stable' });
+    const dispatcher = new InMemoryEventDispatcher();
+    let dispatchedId: string | undefined;
+    dispatcher.register({ type: 'test.event', handle: async (event) => { dispatchedId = event.id; } });
+
+    await runOutboxTick(store, dispatcher, 'worker-1', () => new Date());
+
+    expect(dispatchedId).toBe(entry.value.id);
+  });
+
   it('processes a pending outbox entry', async () => {
     const store = new MockOutboxStore();
     await store.enqueue({ eventType: 'test.event', payload: {}, version: 1, correlationId: 'c1', idempotencyKey: 'ik1' });

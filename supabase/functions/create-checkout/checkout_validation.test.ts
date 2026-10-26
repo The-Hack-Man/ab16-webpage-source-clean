@@ -3,6 +3,8 @@ import {
   validateCustomerInfo,
   validateRequestedItems,
   buildLineItems,
+  stripeModeMatchesDeployment,
+  missingCheckoutReadinessSecrets,
 } from './checkout_validation';
 import type { DbVariant } from './checkout_validation';
 
@@ -26,6 +28,52 @@ function makeVariant(overrides: Partial<DbVariant> = {}): DbVariant {
     ...overrides,
   };
 }
+
+describe('Stripe deployment mode validation', () => {
+  it('defaults to live mode unless staging is explicitly configured', () => {
+    expect(stripeModeMatchesDeployment('sk_live_example')).toBe(true);
+    expect(stripeModeMatchesDeployment('sk_test_example')).toBe(false);
+    expect(stripeModeMatchesDeployment('sk_test_example', 'false')).toBe(true);
+  });
+
+  it('accepts restricted keys only when their mode matches the deployment', () => {
+    expect(stripeModeMatchesDeployment('rk_test_example', 'false')).toBe(true);
+    expect(stripeModeMatchesDeployment('rk_live_example', 'false')).toBe(false);
+    expect(stripeModeMatchesDeployment('rk_live_example', 'true')).toBe(true);
+  });
+
+  it('fails closed for malformed keys or deployment settings', () => {
+    expect(stripeModeMatchesDeployment('unknown')).toBe(false);
+    expect(stripeModeMatchesDeployment('sk_test_example', 'staging')).toBe(false);
+  });
+});
+
+describe('checkout readiness configuration', () => {
+  it('reports missing production email settings without exposing secret values', () => {
+    expect(missingCheckoutReadinessSecrets({
+      stripeSecretKey: 'sk_live_example',
+      printfulApiKey: 'printful-example',
+    })).toEqual(['RESEND_API_KEY', 'ADMIN_ORDER_EMAIL', 'FROM_EMAIL']);
+  });
+
+  it('does not require live fulfilment or email settings in an explicit test deployment', () => {
+    expect(missingCheckoutReadinessSecrets({
+      stripeSecretKey: 'sk_test_example',
+      expectedStripeMode: 'false',
+    })).toEqual([]);
+  });
+
+  it('rejects a Stripe key that does not match the configured deployment mode', () => {
+    expect(missingCheckoutReadinessSecrets({
+      stripeSecretKey: 'sk_test_example',
+      expectedStripeMode: 'true',
+      printfulApiKey: 'printful-example',
+      resendApiKey: 're_example',
+      adminOrderEmail: 'orders@example.com',
+      fromEmail: 'store@example.com',
+    })).toEqual(['STRIPE_SECRET_KEY (must match STRIPE_EXPECT_LIVE_MODE)']);
+  });
+});
 
 describe('validateCustomerInfo', () => {
   const validCustomer = {
@@ -147,19 +195,27 @@ describe('buildLineItems', () => {
     expect(result.snapshot).toHaveLength(2);
   });
 
-  it('rejects an out-of-stock variant', () => {
+  it('allows a mapped made-to-order variant when legacy stock is zero', () => {
     const outOfStock = makeVariant({ stock: 0 });
-    const { error } = buildLineItems([outOfStock], new Map([['variant-1', 1]]));
-    expect(error).not.toBeNull();
-    expect(error!.error).toBe('AB16 T-Shirt (White) is out of stock.');
-    expect(error!.statusCode).toBe(400);
+    const { error, result } = buildLineItems([outOfStock], new Map([['variant-1', 1]]));
+    expect(error).toBeNull();
+    expect(result.snapshot[0].quantity).toBe(1);
   });
 
-  it('rejects a variant with insufficient stock for the requested quantity', () => {
+  it('caps made-to-order quantities at 99 per variant', () => {
     const { error } = buildLineItems([validVariant], new Map([['variant-1', 25]]));
-    expect(error).not.toBeNull();
-    expect(error!.error).toBe('Only 20 AB16 T-Shirt (White) item(s) are available in this size and colour.');
-    expect(error!.statusCode).toBe(400);
+    expect(error).toBeNull();
+    const capped = buildLineItems([validVariant], new Map([['variant-1', 100]]));
+    expect(capped.error).not.toBeNull();
+    expect(capped.error!.error).toBe('Only 99 AB16 T-Shirt (White) item(s) are available in this size and colour.');
+  });
+
+  it('blocks Printful variants explicitly marked out of stock or discontinued', () => {
+    for (const status of ['out_of_stock', 'temporary_out_of_stock', 'discontinued']) {
+      const unavailable = makeVariant({ stock: 20, printful_availability_status: status });
+      const { error } = buildLineItems([unavailable], new Map([['variant-1', 1]]));
+      expect(error?.error).toBe('AB16 T-Shirt (White) is out of stock.');
+    }
   });
 
   it('rejects a variant with a missing Printful mapping (printful_sync_variant_id is null)', () => {

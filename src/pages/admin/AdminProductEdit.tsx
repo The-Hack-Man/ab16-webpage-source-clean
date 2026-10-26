@@ -1,16 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { Save, ArrowLeft, Plus, X } from 'lucide-react';
+import { Save, ArrowLeft, Plus, X, Upload, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import type { ProductImage, ProductVariant } from '@/types';
+import type { ProductImage } from '@/types';
 
 interface VariantRow {
   id?: string;
   size: string;
   color: string;
   sku: string;
-  stock: string;
-  price_override: string;
   printful_sync_variant_id: string;
 }
 
@@ -21,21 +19,63 @@ export function AdminProductEdit() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [loadedVariantIds, setLoadedVariantIds] = useState<string[]>([]);
+  const imageFileRef = useRef<HTMLInputElement>(null);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+
+  const uploadImages = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setUploadingImages(true);
+    setImageUploadError(null);
+    try {
+      const selected = Array.from(files);
+      if (selected.some((file) => !['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type))) {
+        throw new Error('Choose JPG, PNG, WebP, or AVIF images only.');
+      }
+      if (selected.some((file) => file.size > 10 * 1024 * 1024)) {
+        throw new Error('Each image must be 10 MB or smaller.');
+      }
+      const results = await Promise.allSettled(selected.map(async (file) => {
+        const safeName = file.name.normalize('NFKD').replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(-100) || 'product-image';
+        const path = `products/${crypto.randomUUID()}/${safeName}`;
+        const { error } = await supabase.storage.from('product-images').upload(path, file, {
+          contentType: file.type,
+          cacheControl: '31536000',
+          upsert: false,
+        });
+        if (error) throw error;
+        return { path, url: supabase.storage.from('product-images').getPublicUrl(path).data.publicUrl, alt_text: file.name.replace(/\.[^.]+$/, ''), position: 0 };
+      }));
+      const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+      if (failed) {
+        const completed = results.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
+        const { error: cleanupError } = completed.length
+          ? await supabase.storage.from('product-images').remove(completed.map((upload) => upload.path))
+          : { error: null };
+        if (cleanupError) throw new Error(`An image upload failed and temporary files could not be cleaned up: ${failed.reason instanceof Error ? failed.reason.message : 'Upload failed.'}`);
+        throw failed.reason;
+      }
+      const uploads = results.flatMap((result) => result.status === 'fulfilled' ? [{ url: result.value.url, alt_text: result.value.alt_text, position: result.value.position }] : []);
+      setImages((current) => [...current.filter((image) => image.url.trim()), ...uploads].map((image, position) => ({ ...image, position })));
+    } catch (error) {
+      setImageUploadError(error instanceof Error ? error.message : 'Image upload failed.');
+    } finally {
+      setUploadingImages(false);
+      if (imageFileRef.current) imageFileRef.current.value = '';
+    }
+  };
 
   const [form, setForm] = useState({
     name: '', slug: '', description: '', story: '', price: '', compare_at_price: '',
-    category_slug: '', collection_slug: '', status: 'draft', available_for_sale: true, availability_label: '', featured: false,
+    category_slug: '', collection_slug: '', status: 'draft', available_for_sale: false, availability_label: '', featured: false,
     is_new_arrival: false, is_limited_drop: false, material_care: '', delivery_info: '', return_info: '',
     seo_title: '', seo_description: '',
   });
 
-  const [images, setImages] = useState<{ id?: string; url: string; alt_text: string; position: number }[]>([
+  const [images, setImages] = useState<{ id?: string; url: string; alt_text: string; position: number; source_key?: string | null }[]>([
     { url: '', alt_text: '', position: 0 },
   ]);
-  const [variants, setVariants] = useState<VariantRow[]>([
-    { size: 'M', color: 'Black', sku: '', stock: '0', price_override: '', printful_sync_variant_id: '' },
-  ]);
+  const [variants, setVariants] = useState<VariantRow[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -46,25 +86,22 @@ export function AdminProductEdit() {
           name: prod.name ?? '', slug: prod.slug ?? '', description: prod.description ?? '', story: prod.story ?? '',
           price: (prod.price / 100).toFixed(2), compare_at_price: prod.compare_at_price ? (prod.compare_at_price / 100).toFixed(2) : '',
           category_slug: prod.category_slug ?? '', collection_slug: prod.collection_slug ?? '', status: prod.status ?? 'draft',
-          available_for_sale: prod.available_for_sale ?? true, availability_label: prod.availability_label ?? '',
+          available_for_sale: prod.available_for_sale ?? false, availability_label: prod.availability_label ?? '',
           featured: prod.featured ?? false, is_new_arrival: prod.is_new_arrival ?? false, is_limited_drop: prod.is_limited_drop ?? false,
           material_care: prod.material_care ?? '', delivery_info: prod.delivery_info ?? '', return_info: prod.return_info ?? '',
           seo_title: prod.seo_title ?? '', seo_description: prod.seo_description ?? '',
         });
       }
       const { data: imgs } = await supabase.from('product_images').select('*').eq('product_id', id).order('position');
-      if (imgs && imgs.length) setImages(imgs.map((i: ProductImage) => ({ id: i.id, url: i.url, alt_text: i.alt_text ?? '', position: i.position })));
+      if (imgs && imgs.length) setImages(imgs.map((i: ProductImage) => ({ id: i.id, url: i.url, alt_text: i.alt_text ?? '', position: i.position, source_key: i.source_key })));
 
       const { data: vars } = await supabase.from('product_variants').select('*').eq('product_id', id);
       if (vars && vars.length) {
-        setLoadedVariantIds(vars.map((v) => v.id));
-        setVariants(vars.map((v: ProductVariant) => ({
+        setVariants(vars.map((v) => ({
           id: v.id,
           size: v.size,
           color: v.color,
           sku: v.sku ?? '',
-          stock: String(v.stock),
-          price_override: v.price_override ? (v.price_override / 100).toFixed(2) : '',
           printful_sync_variant_id: v.printful_sync_variant_id ? String(v.printful_sync_variant_id) : '',
         })));
       }
@@ -72,20 +109,29 @@ export function AdminProductEdit() {
   }, [id]);
 
   const save = async () => {
-    if (saving) return;
+    if (saving || uploadingImages) return;
 
     if (!form.name.trim()) {
       setSaveError('Product name is required');
       return;
     }
 
-    if (variants.some((variant) => {
-      if (!variant.printful_sync_variant_id.trim()) return false;
-      const id = Number(variant.printful_sync_variant_id);
-      return !Number.isSafeInteger(id) || id <= 0;
-    })) {
-      setSaveError('Printful sync variant IDs must be positive whole numbers.');
-      return;
+    if (form.available_for_sale) {
+      const sellableVariants = variants.filter((variant) => variant.size.trim() && variant.color.trim());
+      const skus = sellableVariants.map((variant) => variant.sku.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''));
+      const syncIds = sellableVariants.map((variant) => variant.printful_sync_variant_id.trim());
+      if (form.status !== 'published') {
+        setSaveError('A product must be published before it can be made available for sale.');
+        return;
+      }
+      if (sellableVariants.length === 0 || sellableVariants.some((variant) => !variant.sku.trim() || !variant.printful_sync_variant_id.trim())) {
+        setSaveError('Sync this product from Printful first; every size and colour must have a provider sync ID before sales can be enabled.');
+        return;
+      }
+      if (new Set(skus).size !== skus.length || new Set(syncIds).size !== syncIds.length) {
+        setSaveError('Sellable variants must have unique shop SKUs and unique Printful sync variant IDs.');
+        return;
+      }
     }
 
     setSaving(true);
@@ -134,60 +180,34 @@ export function AdminProductEdit() {
 
       if (!productId) throw new Error('Could not determine product ID');
 
-      const imgPayloads = images.filter((i) => i.url.trim()).map((i, idx) => ({
-        product_id: productId, url: i.url.trim(), alt_text: i.alt_text || null, position: idx,
-      }));
-      if (imgPayloads.length) {
-        const { error: imgInsertError } = await supabase.from('product_images').insert(imgPayloads);
-        if (imgInsertError) throw imgInsertError;
-      }
-
-      if (isEdit) {
-        const validImgPositions = imgPayloads.map((_, idx) => idx);
-        const { error: imgDeleteError } = await supabase
-          .from('product_images')
-          .delete()
-          .eq('product_id', productId)
-          .not('position', 'in', `(${validImgPositions.join(',')})`);
-        if (imgDeleteError) throw imgDeleteError;
-      }
-
-      const varPayloads = variants
-        .filter((variant) => variant.size.trim() && variant.color.trim())
-        .map((variant) => ({
-          ...(variant.id ? { id: variant.id } : {}),
+      const savedImageIds: string[] = [];
+      for (const [position, image] of images.filter((entry) => entry.url.trim()).entries()) {
+        const imagePayload = {
           product_id: productId,
-          size: variant.size.trim(),
-          color: variant.color.trim(),
-          sku: variant.sku || null,
-          stock: parseInt(variant.stock || '0'),
-          price_override: variant.price_override ? Math.round(parseFloat(variant.price_override) * 100) : null,
-          printful_sync_variant_id: variant.printful_sync_variant_id.trim()
-            ? Number(variant.printful_sync_variant_id)
-            : null,
-        }));
-      let savedVariantIds: string[] = [];
-      if (varPayloads.length) {
-        const { data: savedVariants, error: varInsertError } = await supabase
-          .from('product_variants')
-          .upsert(varPayloads, { onConflict: 'id' })
-          .select('id');
-        if (varInsertError) throw varInsertError;
-        savedVariantIds = savedVariants?.map((variant) => variant.id) ?? [];
+          url: image.url.trim(),
+          alt_text: image.alt_text.trim() || null,
+          position,
+          source_key: image.source_key ?? null,
+        };
+        const result = image.id
+          ? await supabase.from('product_images').update(imagePayload).eq('id', image.id).select('id').single()
+          : await supabase.from('product_images').insert(imagePayload).select('id').single();
+        if (result.error || !result.data) throw result.error ?? new Error('Could not save a product image.');
+        savedImageIds.push(result.data.id);
       }
 
       if (isEdit) {
-        const removedVariantIds = loadedVariantIds.filter((variantId) => !savedVariantIds.includes(variantId));
-        if (removedVariantIds.length > 0) {
-          const { error: varDeleteError } = await supabase
-            .from('product_variants')
-            .delete()
-            .in('id', removedVariantIds);
-          if (varDeleteError) throw varDeleteError;
-        }
+        const { error: imageDeleteError } = savedImageIds.length
+          ? await supabase.from('product_images').delete().eq('product_id', productId).not('id', 'in', `(${savedImageIds.join(',')})`)
+          : await supabase.from('product_images').delete().eq('product_id', productId);
+        if (imageDeleteError) throw imageDeleteError;
       }
 
-      setLoadedVariantIds(savedVariantIds);
+      setImages((current) => current.filter((image) => image.url.trim()).map((image, position) => ({
+        ...image,
+        id: savedImageIds[position],
+        position,
+      })));
       setSaved(true);
       setTimeout(() => navigate('/admin/products'), 1500);
     } catch (err) {
@@ -201,6 +221,17 @@ export function AdminProductEdit() {
       setSaving(false);
     }
   };
+
+  if (!isEdit) {
+    return <div className="max-w-2xl rounded border border-slate-200 bg-white p-6">
+      <h1 className="text-xl font-bold">Create products in Printful</h1>
+      <p className="mt-2 text-sm text-slate-600">Printful is the source of truth for products, artwork and fulfilment variants. New shop listings are imported automatically using Printful product and variant IDs.</p>
+      <div className="mt-5 flex flex-wrap gap-3">
+        <Link to="/admin/printful" className="btn-primary"><RefreshCw size={15} /> Sync Printful catalog</Link>
+        <a href="https://www.printful.com/dashboard/store" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-2 text-sm font-medium"><Upload size={15} /> Open Printful</a>
+      </div>
+    </div>;
+  }
 
   return (
     <div>
@@ -227,7 +258,10 @@ export function AdminProductEdit() {
 
           {/* Images */}
           <Section title="Images">
-            <p className="text-xs text-slate-400 mb-3">Paste image URLs. Upload via Supabase Storage when configured.</p>
+            <p className="text-xs text-slate-400 mb-3">Upload product images here, or paste an existing image URL. JPG, PNG, WebP, and AVIF up to 10 MB each. Uploaded images are linked when you save the product.</p>
+            <input ref={imageFileRef} type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple className="sr-only" aria-label="Upload product images" onChange={(event) => void uploadImages(event.target.files)} />
+            <button type="button" onClick={() => imageFileRef.current?.click()} disabled={uploadingImages} className="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-2 text-sm disabled:opacity-50"><Upload size={15} />{uploadingImages ? 'Uploading…' : 'Upload images'}</button>
+            {imageUploadError && <p role="alert" className="text-sm text-red-700">{imageUploadError} Confirm the product-images storage setup is applied.</p>}
             {images.map((img, i) => (
               <div key={i} className="flex gap-2 mb-2">
                 <input value={img.url} onChange={(e) => setImages(images.map((im, idx) => idx === i ? { ...im, url: e.target.value } : im))} className="admin-input flex-1" placeholder="https://image-url.jpg" />
@@ -238,20 +272,25 @@ export function AdminProductEdit() {
             <button onClick={() => setImages([...images, { url: '', alt_text: '', position: images.length }])} className="text-sm text-accent flex items-center gap-1 mt-2"><Plus size={14} /> Add image</button>
           </Section>
 
-          {/* Variants */}
-          <Section title="Variants (Size / Colour / Stock)">
-            <p className="text-xs text-slate-400 mb-3">Add each matching Printful sync variant ID from your linked Printful store. The shop SKU is not a Printful ID.</p>
-            {variants.map((v, i) => (
-              <div key={v.id ?? i} className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 mb-2">
-                <input value={v.size} onChange={(e) => setVariants(variants.map((vr, idx) => idx === i ? { ...vr, size: e.target.value } : vr))} className="admin-input" placeholder="Size" />
-                <input value={v.color} onChange={(e) => setVariants(variants.map((vr, idx) => idx === i ? { ...vr, color: e.target.value } : vr))} className="admin-input" placeholder="Colour" />
-                <input value={v.stock} onChange={(e) => setVariants(variants.map((vr, idx) => idx === i ? { ...vr, stock: e.target.value } : vr))} className="admin-input" placeholder="Stock" type="number" />
-                <input value={v.price_override} onChange={(e) => setVariants(variants.map((vr, idx) => idx === i ? { ...vr, price_override: e.target.value } : vr))} className="admin-input" placeholder="Price override" type="number" step="0.01" />
-                <input value={v.printful_sync_variant_id} onChange={(e) => setVariants(variants.map((vr, idx) => idx === i ? { ...vr, printful_sync_variant_id: e.target.value } : vr))} className="admin-input" placeholder="Printful sync ID" type="number" min="1" step="1" aria-label={`Printful sync variant ID for ${v.color} size ${v.size}`} />
-                <button onClick={() => setVariants(variants.filter((_, idx) => idx !== i))} className="p-2 hover:bg-red-100 rounded text-red-500"><X size={14} /></button>
+          {/* Printful variants are reconciled by provider IDs and remain read-only here. */}
+          <Section title="Variants synced from Printful">
+            <p className="text-xs text-slate-500">Printful owns the product variants. Sync the catalog from Fulfilment to add and update sizes, colours, images, prices and fulfillment IDs automatically.</p>
+            {variants.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b text-left text-xs uppercase tracking-wide text-slate-500"><th className="py-2 pr-3">Colour</th><th className="py-2 pr-3">Size</th><th className="py-2 pr-3">SKU</th><th className="py-2">Printful ID</th></tr></thead>
+                  <tbody>{variants.map((variant) => (
+                    <tr key={variant.id} className="border-b border-slate-100">
+                      <td className="py-2 pr-3">{variant.color}</td>
+                      <td className="py-2 pr-3">{variant.size}</td>
+                      <td className="py-2 pr-3 font-mono text-xs">{variant.sku || '—'}</td>
+                      <td className="py-2 font-mono text-xs">{variant.printful_sync_variant_id || 'Not synced'}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
               </div>
-            ))}
-            <button onClick={() => setVariants([...variants, { size: '', color: '', sku: '', stock: '0', price_override: '', printful_sync_variant_id: '' }])} className="text-sm text-accent flex items-center gap-1 mt-2"><Plus size={14} /> Add variant</button>
+            ) : <p className="text-sm text-slate-500">No Printful variants are linked yet. Create the product in Printful, then use the catalog sync.</p>}
+            <Link to="/admin/printful" className="inline-flex items-center gap-2 rounded border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50"><RefreshCw size={14} /> Open Printful catalog sync</Link>
           </Section>
 
           {/* Additional info */}
@@ -288,8 +327,8 @@ export function AdminProductEdit() {
             <Field label="SEO Description"><textarea value={form.seo_description} onChange={(e) => setForm({ ...form, seo_description: e.target.value })} rows={2} className="admin-input resize-none" /></Field>
           </Section>
 
-          <button onClick={save} disabled={saving} className="btn-primary w-full">
-            {saving ? 'Saving…' : saved ? 'Saved!' : <><Save size={14} /> Save Product</>}
+          <button onClick={save} disabled={saving || uploadingImages} className="btn-primary w-full">
+            {uploadingImages ? 'Finish image upload…' : saving ? 'Saving…' : saved ? 'Saved!' : <><Save size={14} /> Save Product</>}
           </button>
           {saveError && (
             <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-sm text-red-700">

@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, ArrowDown, Play, ShoppingBag, Music2, Instagram, Youtube, Music as TikTokIcon, ExternalLink } from 'lucide-react';
+import { ArrowRight, Play, ShoppingBag, Music2, Instagram, Youtube, Music as TikTokIcon, ExternalLink } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { Product, MusicRelease, Campaign, SiteSettings } from '@/types';
 import { ProductCard } from '@/components/ProductCard';
 import { UpcomingAlbumBanner } from '@/components/UpcomingAlbumBanner';
 import { formatDate, timeUntil } from '@/lib/format';
 
-const HERO_IMAGE = '/images/merch/clothes2.png';
+const HERO_IMAGE = '/images/site/ab16-home-header.jpg';
 const SPLIT_FASHION = '/images/merch/opt/ab16clothing1.webp';
-const SPLIT_MUSIC = '/images/merch/clothes3.png';
+const SPLIT_MUSIC = '/images/site/jamie-g-home.png';
 const STORY_IMAGE = '/images/merch/opt/ab16clothing.webp';
 const DEFAULT_ALBUM_COVER = '/images/albumcovers/newalbumcover.png';
 
@@ -28,7 +28,7 @@ export function HomePage() {
     void (async () => {
       try {
         const [prodRes, relRes, campRes, setRes] = await Promise.all([
-          supabase.from('products').select('*, product_images(*), product_variants(*)').eq('status', 'published').order('created_at', { ascending: false }).limit(4),
+          supabase.from('products').select('*, product_images(*), product_variants(*)').eq('status', 'published').order('created_at', { ascending: false }).limit(8),
           supabase.from('music_releases').select('*, tracks(*)').in('status', ['published', 'upcoming', 'scheduled']).order('release_date', { ascending: true }).limit(1).maybeSingle(),
           supabase.from('campaigns').select('*').in('status', ['live', 'scheduled']).order('launch_date', { ascending: false }).limit(1).maybeSingle(),
           supabase.from('site_settings').select('*').limit(1).maybeSingle(),
@@ -50,25 +50,37 @@ export function HomePage() {
     return () => { active = false; };
   }, [retryKey]);
 
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') setRetryKey((key) => key + 1);
+    };
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, []);
+
   return (
     <div className="bg-bone">
       <Hero settings={settings} />
       {loadError && (
         <div role="alert" className="container-base py-4 text-sm text-red-800">
-          Some homepage content could not be loaded: {loadError}
+          Some live content is temporarily unavailable. Please try again shortly.
           <button type="button" className="ml-3 underline font-semibold" onClick={() => setRetryKey((key) => key + 1)}>
             Try again
           </button>
         </div>
       )}
-      <FeaturedClothing products={products} loading={loading} />
+      <FeaturedClothing products={products} loading={loading} unavailable={Boolean(loadError)} />
       <div className="divider-wave" />
       <LatestDrop campaign={campaign} />
       <div className="divider-wave" />
       <FeaturedRelease release={featuredRelease} />
-      <ShopMeetsMusic />
-      <BrandStory />
-      <SocialSection />
+      <ShopMeetsMusic settings={settings} />
+      <BrandStory settings={settings} />
+      <SocialSection settings={settings} />
     </div>
   );
 }
@@ -76,17 +88,22 @@ export function HomePage() {
 function Hero({ settings }: { settings: SiteSettings | null }) {
   const headline = settings?.hero_headline ?? 'Fae the Scheme to the Scene';
   const subtext = settings?.hero_subtext ?? 'AB16 Clothing. Independent streetwear. Music. Culture. Identity.';
-  const heroImage = settings?.hero_image_url ?? HERO_IMAGE;
+  const heroImage = settings?.hero_image_url || HERO_IMAGE;
 
   return (
-    <section className="relative h-[92vh] min-h-[600px] w-full bg-jet">
-      <div className="absolute inset-0 overflow-hidden">
-        <img src={heroImage} alt="AB16 Clothing hero" className="absolute inset-0 w-full h-full object-cover opacity-50" />
-        <div className="absolute inset-0 bg-gradient-to-b from-jet via-jet/90 to-jet/50" />
+    <section className="w-full bg-jet text-bone">
+      <div className="relative w-full overflow-hidden bg-jet">
+        <img src={heroImage} alt="AB16 tartan and crest header artwork" className="block w-full aspect-[16/9] object-cover" />
+        <nav aria-label="Homepage artwork navigation" className="absolute inset-0">
+          <Link to="/shop" aria-label="Shop all AB16 clothing" title="Shop all" className="absolute left-[19.5%] top-[81.5%] h-[8.5%] w-[10.5%] rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" />
+          <Link to="/music" aria-label="Jamie G music" title="Jamie G" className="absolute left-[31.5%] top-[81.5%] h-[8.5%] w-[9.5%] rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" />
+          <Link to="/about#brand" aria-label="About AB16 Clothing" title="About us" className="absolute left-[42.5%] top-[81.5%] h-[8.5%] w-[10%] rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" />
+          <Link to="/about#story" aria-label="Our AB16 story" title="Our story" className="absolute left-[54.5%] top-[81.5%] h-[8.5%] w-[10.5%] rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent" />
+        </nav>
       </div>
 
-      <div className="relative h-full container-base flex flex-col justify-end pt-16 pb-20 lg:pt-24 lg:pb-28">
-        <div className="max-w-3xl animate-fade-up overflow-visible">
+      <div className="container-base py-10 lg:py-14">
+        <div className="max-w-4xl animate-fade-up">
           <p className="editorial-kicker text-bone/75 mb-5">
             AB16 Clothing × Jamie G Music — Aberdeen
           </p>
@@ -105,20 +122,12 @@ function Hero({ settings }: { settings: SiteSettings | null }) {
             </Link>
           </div>
         </div>
-
-        <div className="absolute bottom-8 right-8 hidden lg:flex flex-col items-center gap-2 text-bone/50">
-          <span className="text-[9px] uppercase tracking-[0.3em] rotate-90 origin-center mt-8">Scroll</span>
-          <div className="relative">
-            <ArrowDown size={14} className="animate-bounce" />
-            <div className="absolute -inset-2 border border-accent/30 rounded-full animate-pulse-glow" />
-          </div>
-        </div>
       </div>
     </section>
   );
 }
 
-function FeaturedClothing({ products, loading }: { products: Product[]; loading: boolean }) {
+function FeaturedClothing({ products, loading, unavailable }: { products: Product[]; loading: boolean; unavailable: boolean }) {
   return (
     <section className="py-20 lg:py-28">
       <div className="container-base">
@@ -134,7 +143,7 @@ function FeaturedClothing({ products, loading }: { products: Product[]; loading:
 
         {loading ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-            {[0, 1, 2, 3].map((i) => (
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
               <div key={i} className="aspect-[4/5] bg-slate-100 animate-pulse" />
             ))}
           </div>
@@ -142,10 +151,16 @@ function FeaturedClothing({ products, loading }: { products: Product[]; loading:
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
             {products.map((p) => <ProductCard key={p.id} product={p} />)}
           </div>
+        ) : unavailable ? (
+          <EmptyState
+            title="The catalogue is temporarily unavailable"
+            message="We could not connect to the live catalogue just now. Please try again shortly."
+            cta={{ label: 'Try the shop', to: '/shop' }}
+          />
         ) : (
           <EmptyState
             title="The catalogue is being curated"
-            message="Products will appear here once the team adds them through the admin dashboard. No demo products are shown — only real stock."
+            message="Products will appear here once the team adds them through the admin dashboard. No demo products are shown — only connected, made-to-order pieces."
             cta={{ label: 'Browse Shop', to: '/shop' }}
           />
         )}
@@ -302,7 +317,7 @@ function FeaturedRelease({ release }: { release: MusicRelease | null }) {
   );
 }
 
-function ShopMeetsMusic() {
+function ShopMeetsMusic({ settings }: { settings: SiteSettings | null }) {
   return (
     <section className="py-24 lg:py-32">
       <div className="container-base">
@@ -311,7 +326,7 @@ function ShopMeetsMusic() {
 
           <div className="grid md:grid-cols-2 gap-1">
             <div className="relative aspect-[4/5] md:aspect-[3/4] group overflow-hidden clip-diagonal-top">
-              <img src={SPLIT_FASHION} alt="AB16 fashion" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              <img src={settings?.home_fashion_image_url || SPLIT_FASHION} alt="AB16 fashion" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
               <div className="absolute inset-0 bg-gradient-to-r from-jet/50 via-jet/30 to-transparent group-hover:from-jet/60 transition-all duration-500" />
               <div className="absolute bottom-0 left-0 right-0 p-8 lg:p-10">
                 <p className="text-[11px] uppercase tracking-[0.25em] text-bone/60 mb-2">AB16 Clothing</p>
@@ -321,7 +336,7 @@ function ShopMeetsMusic() {
             </div>
 
             <div className="relative aspect-[4/5] md:aspect-[3/4] group overflow-hidden clip-diagonal-top">
-              <img src={SPLIT_MUSIC} alt="Jamie G music" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              <img src={settings?.home_music_image_url || SPLIT_MUSIC} alt="Jamie G music" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
               <div className="absolute inset-0 bg-gradient-to-r from-jet/50 via-jet/30 to-transparent group-hover:from-jet/60 transition-all duration-500" />
               <div className="absolute bottom-0 left-0 right-0 p-8 lg:p-10">
                 <p className="text-[11px] uppercase tracking-[0.25em] text-bone/60 mb-2">Jamie G Music</p>
@@ -335,7 +350,7 @@ function ShopMeetsMusic() {
   );
 }
 
-function BrandStory() {
+function BrandStory({ settings }: { settings: SiteSettings | null }) {
   return (
     <section className="relative overflow-hidden bg-jet text-bone py-24 lg:py-32">
       <img src="/images/merch/opt/ab16clothing1.webp" alt="" aria-hidden="true" className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.08] grayscale mix-blend-screen" />
@@ -343,7 +358,7 @@ function BrandStory() {
       <div className="container-base relative">
         <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
           <div className="relative aspect-[4/3] overflow-hidden">
-            <img src={STORY_IMAGE} alt="AB16 brand story" className="w-full h-full object-cover" />
+            <img src={settings?.brand_story_image_url || STORY_IMAGE} alt="AB16 brand story" className="w-full h-full object-cover" />
           </div>
           <div>
             <p className="section-label text-bone/40 mb-4">Our Story</p>
@@ -365,11 +380,11 @@ function BrandStory() {
   );
 }
 
-function SocialSection() {
+function SocialSection({ settings }: { settings: SiteSettings | null }) {
   const socials = [
-    { icon: Instagram, label: 'Instagram', desc: '@ab16clothing', url: 'https://instagram.com/ab16clothing' },
-    { icon: TikTokIcon, label: 'TikTok', desc: '@jamiegmusic', url: 'https://www.tiktok.com/@jamiegmusic' },
-    { icon: Youtube, label: 'YouTube', desc: 'Jamie G Official', url: 'https://www.youtube.com/channel/UCDTrDLZyf8YTXvKFTHOCkyg' },
+    { icon: Instagram, label: 'Instagram', desc: '@ab16clothing', url: settings?.instagram_url || 'https://www.instagram.com/ab16clothing/' },
+    { icon: TikTokIcon, label: 'TikTok', desc: '@jamiegmusic', url: settings?.tiktok_url || 'https://www.tiktok.com/@jamiegmusic' },
+    { icon: Youtube, label: 'YouTube', desc: 'Jamie G Official', url: settings?.youtube_url || 'https://www.youtube.com/channel/UCDTrDLZyf8YTXvKFTHOCkyg' },
   ];
 
   return (

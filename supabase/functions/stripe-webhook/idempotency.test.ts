@@ -14,6 +14,8 @@ import {
   checkPrintfulSubmissionIdempotency,
   describeClaimOutcome,
   isPrintfulConfirmedButUnreconciled,
+  shouldSubmitPrintfulOrder,
+  stripeModeMatchesDeployment,
 } from './idempotency';
 import type { OrderRecord, PaymentRecord, PrintfulOrder } from './idempotency';
 
@@ -566,5 +568,29 @@ describe('isPrintfulConfirmedButUnreconciled', () => {
     expect(
       isPrintfulConfirmedButUnreconciled(makePrintfulOrder({ confirmed_at: null }), makeOrder({ fulfilment_status: 'unfulfilled' })),
     ).toBe(false);
+  });
+});
+
+describe('Stripe test-mode side-effect guard', () => {
+  it('blocks Printful fulfillment for test-mode events', () => {
+    expect(shouldSubmitPrintfulOrder(false)).toBe(false);
+  });
+
+  it('keeps the live-mode fulfillment path enabled', () => {
+    expect(shouldSubmitPrintfulOrder(true)).toBe(true);
+  });
+
+  it('defaults an unconfigured deployment to live mode', () => {
+    expect(stripeModeMatchesDeployment(false)).toBe(false);
+    expect(stripeModeMatchesDeployment(true)).toBe(true);
+  });
+
+  it('allows test mode only when the deployment is explicitly configured for it', () => {
+    expect(stripeModeMatchesDeployment(false, 'false')).toBe(true);
+    expect(stripeModeMatchesDeployment(true, 'false')).toBe(false);
+  });
+
+  it('fails closed for an invalid deployment-mode setting', () => {
+    expect(stripeModeMatchesDeployment(false, 'staging')).toBe(false);
   });
 });

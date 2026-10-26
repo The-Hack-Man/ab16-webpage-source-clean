@@ -12,6 +12,7 @@ export interface ProductImage {
   url: string;
   alt_text: string | null;
   position: number;
+  source_key?: string | null;
 }
 
 export interface ProductVariant {
@@ -21,7 +22,10 @@ export interface ProductVariant {
   color: string;
   sku: string | null;
   stock: number;
+  /** Printful made-to-order availability, kept separate from AB16 order quantity limits. */
+  printful_availability_status?: 'active' | 'discontinued' | 'out_of_stock' | 'temporary_out_of_stock' | null;
   price_override: number | null; // pence
+  printful_variant_id?: number | null;
   printful_sync_variant_id: number | null;
 }
 
@@ -47,6 +51,9 @@ export interface Product {
   seo_title: string | null;
   seo_description: string | null;
   category_slug: string | null;
+  printful_product_id?: number | null;
+  printful_managed?: boolean;
+  printful_synced_at?: string | null;
   created_at: string;
   product_images?: ProductImage[];
   product_variants?: ProductVariant[];
@@ -164,6 +171,12 @@ export interface SiteSettings {
   hero_subtext: string;
   hero_image_url: string | null;
   hero_video_url: string | null;
+  home_fashion_image_url: string | null;
+  home_music_image_url: string | null;
+  brand_story_image_url: string | null;
+  jamie_hero_image_url: string | null;
+  jamie_studio_image_url: string | null;
+  music_hero_image_url: string | null;
   maintenance_mode: boolean;
   updated_at: string;
 }

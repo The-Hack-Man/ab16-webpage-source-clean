@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Storefront — homepage rendering', () => {
+  test('workforce route requires administrator access', async ({ page }) => {
+    await page.goto('/admin/workforce');
+
+    await expect(page.getByRole('heading', { name: 'Admin Access' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Digital Workforce' })).not.toBeVisible();
+  });
+
   test('desktop homepage loads without critical errors', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (err) => pageErrors.push(err.message));

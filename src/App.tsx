@@ -23,7 +23,7 @@ import { SearchPage } from '@/pages/SearchPage';
 import { BagPage } from '@/pages/BagPage';
 import { CheckoutPage } from '@/pages/CheckoutPage';
 import { CheckoutSuccessPage } from '@/pages/CheckoutSuccessPage';
-import { AccountPage, LoginPage, RegisterPage } from '@/pages/AccountPages';
+import { AccountPage, ForgotPasswordPage, LoginPage, RegisterPage, ResetPasswordPage } from '@/pages/AccountPages';
 import { NotFoundPage, WishlistPage, AdminPlaceholder } from '@/pages/ExtraPages';
 
 const MasterPage = lazy(() => import('@/pages/master/MasterPage').then(m => ({ default: m.MasterPage })));
@@ -34,10 +34,20 @@ const AdminReleases = lazy(() => import('@/pages/admin/AdminReleases').then(m =>
 const AdminAIMastering = lazy(() => import('@/pages/admin/AdminAIMastering').then(m => ({ default: m.AdminAIMastering })));
 const AdminReleaseEdit = lazy(() => import('@/pages/admin/AdminReleaseEdit').then(m => ({ default: m.AdminReleaseEdit })));
 const AdminOrders = lazy(() => import('@/pages/admin/AdminOrders').then(m => ({ default: m.AdminOrders })));
+const AdminOrderDetail = lazy(() => import('@/pages/admin/AdminOrderDetail').then(m => ({ default: m.AdminOrderDetail })));
 const AdminInventory = lazy(() => import('@/pages/admin/AdminInventory').then(m => ({ default: m.AdminInventory })));
 const AdminNewsletter = lazy(() => import('@/pages/admin/AdminNewsletter').then(m => ({ default: m.AdminNewsletter })));
 const AdminEnquiries = lazy(() => import('@/pages/admin/AdminEnquiries').then(m => ({ default: m.AdminEnquiries })));
 const AdminSettings = lazy(() => import('@/pages/admin/AdminSettings').then(m => ({ default: m.AdminSettings })));
+const AdminAnalytics = lazy(() => import('@/pages/admin/AdminAnalytics').then(m => ({ default: m.AdminAnalytics })));
+const AdminAlerts = lazy(() => import('@/pages/admin/AdminAlerts').then(m => ({ default: m.AdminAlerts })));
+const AdminPrintful = lazy(() => import('@/pages/admin/AdminPrintful').then(m => ({ default: m.AdminPrintful })));
+const AdminStripe = lazy(() => import('@/pages/admin/AdminStripe').then(m => ({ default: m.AdminStripe })));
+const AdminWorkforce = lazy(() => import('@/pages/admin/AdminWorkforce').then(m => ({ default: m.AdminWorkforce })));
+const AdminControlDesk = lazy(() => import('@/pages/admin/AdminControlDesk').then(m => ({ default: m.AdminControlDesk })));
+const AdminWebContent = lazy(() => import('@/pages/admin/AdminWebContent').then(m => ({ default: m.AdminWebContent })));
+const AdminContentHome = lazy(() => import('@/pages/admin/AdminWebContent').then(m => ({ default: m.AdminContentHome })));
+const AdminUploadGuide = lazy(() => import('@/pages/admin/AdminUploadGuide').then(m => ({ default: m.AdminUploadGuide })));
 
 function StoreLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -64,26 +74,33 @@ function App() {
     <BrowserRouter>
       <Routes>
         {/* Admin routes — lazy loaded, no store header/footer */}
-        <Route path="/admin" element={<AdminSuspense><AdminOverview /></AdminSuspense>} />
+        <Route path="/admin" element={<AdminSuspense><AdminControlDesk /></AdminSuspense>} />
+        <Route path="/admin/overview" element={<AdminSuspense><AdminOverview /></AdminSuspense>} />
+        <Route path="/admin/analytics" element={<AdminSuspense><AdminAnalytics /></AdminSuspense>} />
+        <Route path="/admin/alerts" element={<AdminSuspense><AdminAlerts /></AdminSuspense>} />
+        <Route path="/admin/workforce" element={<AdminSuspense><AdminWorkforce /></AdminSuspense>} />
         <Route path="/admin/products" element={<AdminSuspense><AdminProducts /></AdminSuspense>} />
         <Route path="/admin/products/new" element={<AdminSuspense><AdminProductEdit /></AdminSuspense>} />
         <Route path="/admin/products/:id" element={<AdminSuspense><AdminProductEdit /></AdminSuspense>} />
+        <Route path="/admin/uploads" element={<AdminSuspense><AdminUploadGuide /></AdminSuspense>} />
         <Route path="/admin/inventory" element={<AdminSuspense><AdminInventory /></AdminSuspense>} />
         <Route path="/admin/orders" element={<AdminSuspense><AdminOrders /></AdminSuspense>} />
-        <Route path="/admin/orders/:id" element={<AdminSuspense><AdminOrders /></AdminSuspense>} />
+        <Route path="/admin/orders/:id" element={<AdminSuspense><AdminOrderDetail /></AdminSuspense>} />
+        <Route path="/admin/printful" element={<AdminSuspense><AdminPrintful /></AdminSuspense>} />
+        <Route path="/admin/stripe" element={<AdminSuspense><AdminStripe /></AdminSuspense>} />
         <Route path="/admin/customers" element={<AdminSuspense><AdminPlaceholder title="Customers" desc="Customer management with order history and profiles." /></AdminSuspense>} />
         <Route path="/admin/discounts" element={<AdminSuspense><AdminPlaceholder title="Discounts" desc="Create and manage discount codes and promotions." /></AdminSuspense>} />
         <Route path="/admin/releases" element={<AdminSuspense><AdminReleases /></AdminSuspense>} />
         <Route path="/admin/releases/new" element={<AdminSuspense><AdminReleaseEdit /></AdminSuspense>} />
         <Route path="/admin/releases/:id" element={<AdminSuspense><AdminReleaseEdit /></AdminSuspense>} />
         <Route path="/admin/ai-mastering" element={<AdminSuspense><AdminAIMastering /></AdminSuspense>} />
-        <Route path="/admin/videos" element={<AdminSuspense><AdminPlaceholder title="Music Videos" desc="Manage the music video library." /></AdminSuspense>} />
-        <Route path="/admin/news" element={<AdminSuspense><AdminPlaceholder title="News" desc="Publish and manage music news articles." /></AdminSuspense>} />
-        <Route path="/admin/events" element={<AdminSuspense><AdminPlaceholder title="Events" desc="Manage live appearances and events." /></AdminSuspense>} />
-        <Route path="/admin/campaigns" element={<AdminSuspense><AdminPlaceholder title="Campaigns" desc="Create AB16 × Jamie G collaborative campaigns." /></AdminSuspense>} />
+        <Route path="/admin/videos" element={<AdminSuspense><AdminWebContent kind="videos" /></AdminSuspense>} />
+        <Route path="/admin/news" element={<AdminSuspense><AdminWebContent kind="news" /></AdminSuspense>} />
+        <Route path="/admin/events" element={<AdminSuspense><AdminWebContent kind="events" /></AdminSuspense>} />
+        <Route path="/admin/campaigns" element={<AdminSuspense><AdminWebContent kind="campaigns" /></AdminSuspense>} />
         <Route path="/admin/newsletter" element={<AdminSuspense><AdminNewsletter /></AdminSuspense>} />
         <Route path="/admin/enquiries" element={<AdminSuspense><AdminEnquiries /></AdminSuspense>} />
-        <Route path="/admin/content" element={<AdminSuspense><AdminPlaceholder title="Content" desc="Edit homepage sections, brand story, FAQs, and policies." /></AdminSuspense>} />
+        <Route path="/admin/content" element={<AdminSuspense><AdminContentHome /></AdminSuspense>} />
         <Route path="/admin/settings" element={<AdminSuspense><AdminSettings /></AdminSuspense>} />
         <Route path="/admin/users" element={<AdminSuspense><AdminPlaceholder title="Users & Roles" desc="Manage admin users and permissions." /></AdminSuspense>} />
         <Route path="/admin/audit-log" element={<AdminSuspense><AdminPlaceholder title="Audit Log" desc="View administrative action history." /></AdminSuspense>} />
@@ -103,6 +120,8 @@ function App() {
         <Route path="/account" element={<StoreLayout><AccountPage /></StoreLayout>} />
         <Route path="/account/login" element={<StoreLayout><LoginPage /></StoreLayout>} />
         <Route path="/account/register" element={<StoreLayout><RegisterPage /></StoreLayout>} />
+        <Route path="/account/forgot-password" element={<StoreLayout><ForgotPasswordPage /></StoreLayout>} />
+        <Route path="/account/reset-password" element={<StoreLayout><ResetPasswordPage /></StoreLayout>} />
         <Route path="/account/orders" element={<StoreLayout><AccountPage /></StoreLayout>} />
         <Route path="/account/orders/:id" element={<StoreLayout><AccountPage /></StoreLayout>} />
         <Route path="/wishlist" element={<StoreLayout><WishlistPage /></StoreLayout>} />

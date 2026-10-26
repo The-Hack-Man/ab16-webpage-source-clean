@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { syncPrintfulCatalog } from '../_shared/printful-catalog-sync.ts';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-pf-webhook-signature',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
@@ -55,6 +55,16 @@ Deno.serve(async (req) => {
     const payload = asRecord(JSON.parse(rawBody));
     const eventType = asString(payload.type);
     const eventData = asRecord(payload.data);
+
+    if (eventType === 'product_updated' || eventType === 'product_synced' || eventType === 'stock_updated') {
+      const syncedProduct = asRecord(eventData.sync_product ?? eventData.product ?? eventData);
+      const productId = asNumber(syncedProduct.id ?? eventData.product_id ?? eventData.sync_product_id);
+      const printfulToken = Deno.env.get('PRINTFUL_API_KEY2') ?? Deno.env.get('PRINTFUL_API_KEY');
+      if (!productId || !printfulToken) return json({ error: 'Printful product sync is not configured.' }, 503);
+      const result = await syncPrintfulCatalog(supabase, printfulToken, productId);
+      return json({ received: true, catalog: result });
+    }
+
     const printfulOrder = asRecord(eventData.order ?? payload.order ?? eventData);
     const shipment = asRecord(eventData.shipment ?? payload.shipment ?? eventData);
     const externalOrderNumber = asString(printfulOrder.external_id ?? eventData.external_id);

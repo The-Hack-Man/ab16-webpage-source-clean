@@ -2,6 +2,27 @@ import type { Result } from '../validation.ts';
 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'dead';
 
+/** Versioned payloads accepted by the durable worker. Add a new contract before
+ * registering a handler or producer; unknown types must remain unhandled. */
+export type JobContracts = {
+  'control_desk.health_check': { schemaVersion: 1; runId: string };
+};
+
+export type OutboxEventContracts = {
+  'control_desk.health_check.requested': { schemaVersion: 1; runId: string };
+};
+
+export type JobType = keyof JobContracts;
+export type OutboxEventType = keyof OutboxEventContracts;
+
+export function isVersionedRunPayload(value: unknown): value is { schemaVersion: 1; runId: string } {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as { schemaVersion?: unknown; runId?: unknown };
+  return payload.schemaVersion === 1
+    && typeof payload.runId === 'string'
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.runId);
+}
+
 export type JobRecord = {
   id: string;
   type: string;

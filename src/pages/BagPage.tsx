@@ -16,7 +16,7 @@ export function BagPage() {
           <div className="border border-jet/10 py-16 text-center">
             <ShoppingBag size={40} className="mx-auto text-slate-300 mb-4" strokeWidth={1} />
             <h2 className="text-lg font-semibold">Your bag is empty</h2>
-            <p className="mt-2 text-sm text-slate-400">AB16 clothing is listed as coming soon, so checkout and Stripe payments stay closed until a drop is for sale.</p>
+            <p className="mt-2 text-sm text-slate-400">Browse the shop for made-to-order AB16 pieces. Your bag will show delivery and total before secure checkout.</p>
             <Link to="/shop" className="btn-primary mt-6">Start Shopping <ArrowRight size={14} /></Link>
           </div>
         </div>

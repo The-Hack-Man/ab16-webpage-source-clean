@@ -53,6 +53,103 @@ export function LoginPage() {
       <p className="mt-6 text-center text-sm text-slate-500">
         Don't have an account? <Link to="/account/register" className="link-underline font-medium text-jet">Create one</Link>
       </p>
+      <p className="mt-3 text-center text-sm">
+        <Link to="/account/forgot-password" className="link-underline font-medium text-jet">Forgot your password?</Link>
+      </p>
+    </AuthLayout>
+  );
+}
+
+export function ForgotPasswordPage() {
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
+  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    const redirectTo = `${window.location.origin}/account/reset-password`;
+    const { error: requestError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+    setLoading(false);
+    if (requestError) {
+      setError(requestError.message);
+      return;
+    }
+    setSent(true);
+  };
+
+  return (
+    <AuthLayout title="Reset your password" subtitle="We’ll email you a secure link to choose a new password.">
+      {sent ? (
+        <div role="status" className="border border-jet/10 bg-white/60 p-4 text-sm text-slate-600">
+          If an account exists for that address, a password reset link is on its way. Check your inbox and spam folder.
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="recovery-email" className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400 block mb-2">Email</label>
+            <div className="relative">
+              <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input id="recovery-email" required type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input-field pl-11" placeholder="your@email.com" />
+            </div>
+          </div>
+          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+          <button type="submit" disabled={loading} className="btn-primary w-full">
+            {loading ? 'Sending…' : <>Send reset link <ArrowRight size={14} /></>}
+          </button>
+        </form>
+      )}
+      <p className="mt-6 text-center text-sm text-slate-500">
+        <Link to="/account/login" className="link-underline font-medium text-jet">Back to sign in</Link>
+      </p>
+    </AuthLayout>
+  );
+}
+
+export function ResetPasswordPage() {
+  const navigate = useNavigate();
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    const { error: updateError } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    setSaved(true);
+    window.setTimeout(() => navigate('/admin'), 900);
+  };
+
+  return (
+    <AuthLayout title="Choose a new password" subtitle="Use at least 8 characters for your account password.">
+      {saved ? (
+        <div role="status" className="border border-emerald-700/20 bg-emerald-50 p-4 text-sm text-emerald-800">
+          Password updated. Opening the admin dashboard…
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="new-password" className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400 block mb-2">New password</label>
+            <div className="relative">
+              <Lock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input id="new-password" required type="password" autoComplete="new-password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} className="input-field pl-11" placeholder="At least 8 characters" />
+            </div>
+          </div>
+          {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+          <button type="submit" disabled={loading} className="btn-primary w-full">
+            {loading ? 'Updating…' : <>Update password <ArrowRight size={14} /></>}
+          </button>
+        </form>
+      )}
     </AuthLayout>
   );
 }
@@ -167,7 +264,7 @@ export function AccountPage() {
         </div>
 
         <div className="mt-8">
-          <OrderHistory email={session.user.email ?? ''} />
+          <OrderHistory userId={session.user.id} />
         </div>
       </div>
     </div>
@@ -183,17 +280,18 @@ function AccountCard({ title, desc, to }: { title: string; desc: string; to: str
   );
 }
 
-function OrderHistory({ email }: { email: string }) {
+function OrderHistory({ userId }: { userId: string }) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setLoadError(false);
     (async () => {
-      const { data, error } = await supabase.from('orders').select('*').eq('email', email).order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('orders').select('*').eq('user_id', userId).order('created_at', { ascending: false });
       if (!active) return;
       if (error) {
         console.error('Could not load order history:', error.message);
@@ -203,7 +301,7 @@ function OrderHistory({ email }: { email: string }) {
       setLoading(false);
     })();
     return () => { active = false; };
-  }, [email]);
+  }, [userId, retryCount]);
 
   if (loading) return <p className="text-sm text-slate-400">Loading orders…</p>;
 
@@ -211,7 +309,10 @@ function OrderHistory({ email }: { email: string }) {
     <div>
       <h2 className="text-sm font-semibold uppercase tracking-wider mb-4">Recent Orders</h2>
       {loadError ? (
-        <p className="border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">Your order history could not be loaded. Please try again later.</p>
+        <div className="border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
+          <p>Your order history could not be loaded.</p>
+          <button type="button" className="mt-2 font-semibold underline" onClick={() => setRetryCount((count) => count + 1)}>Try again</button>
+        </div>
       ) : orders.length === 0 ? (
         <div className="border border-jet/10 py-12 text-center">
           <p className="text-sm text-slate-400">No orders yet.</p>

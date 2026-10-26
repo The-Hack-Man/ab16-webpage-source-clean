@@ -47,9 +47,14 @@ export async function runOutboxTick(
 
   const entry = result.value;
   try {
-    const event = buildEvent(entry.eventType, entry.payload, {
+    const event = {
+      ...buildEvent(entry.eventType, entry.payload, {
       correlationId: entry.correlationId,
-    });
+      }),
+      // Keep the durable outbox id as the event id so handlers can make their
+      // side effects idempotent across retries.
+      id: entry.id,
+    };
     await dispatcher.dispatch(event);
     await deps.markPublished(entry.id);
     processed++;

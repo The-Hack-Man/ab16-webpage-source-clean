@@ -1,8 +1,10 @@
 import Stripe from 'https://esm.sh/stripe@16.12.0?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
+const SITE_ORIGIN = new URL(Deno.env.get('PUBLIC_SITE_URL') ?? 'https://ab16clothing.co.uk').origin;
+const IS_TEST_DEPLOYMENT = Deno.env.get('STRIPE_EXPECT_LIVE_MODE') === 'false';
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': IS_TEST_DEPLOYMENT ? '*' : SITE_ORIGIN,
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, apikey',
 };
@@ -10,22 +12,30 @@ const corsHeaders = {
 const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const expectedStripeMode = Deno.env.get('STRIPE_EXPECT_LIVE_MODE');
 
-const CREDIT_PACKAGES: Record<string, { credits: number; amount: number; label: string }> = {
-  single: { credits: 1, amount: 500, label: '1 Full-Track Master (£5)' },
-  pack5: { credits: 5, amount: 2500, label: '5 Mastering Credits (£25)' },
-  pack10: { credits: 10, amount: 5000, label: '10 Mastering Credits (£50)' },
+const CREDIT_PACKAGES: Record<string, { credits: number; amount: number; priceId?: string }> = {
+  single: { credits: 1, amount: 500, priceId: Deno.env.get('STRIPE_MASTERING_PRICE_SINGLE') },
+  pack5: { credits: 5, amount: 2500, priceId: Deno.env.get('STRIPE_MASTERING_PRICE_PACK5') },
+  pack10: { credits: 10, amount: 5000, priceId: Deno.env.get('STRIPE_MASTERING_PRICE_PACK10') },
 };
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed.' }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
 
   try {
-    if (!stripeKey || !supabaseUrl || !supabaseServiceKey) {
+    if (!stripeKey || !stripeModeMatchesDeployment(stripeKey, expectedStripeMode)
+      || !supabaseUrl || !supabaseServiceKey) {
       return new Response(
-        JSON.stringify({ error: 'Payment system is not configured. STRIPE_SECRET_KEY is missing.' }),
+        JSON.stringify({ error: 'Payment system is not configured for this environment.' }),
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -64,7 +74,12 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    const allowedOrigins = new Set([siteOrigin, 'http://localhost:5173', 'http://127.0.0.1:5173']);
+    const allowedOrigins = new Set([siteOrigin]);
+    if (IS_TEST_DEPLOYMENT) {
+      for (const host of ['localhost', '127.0.0.1']) {
+        for (const port of [5173, 5174, 5176, 5177]) allowedOrigins.add(`http://${host}:${port}`);
+      }
+    }
     if (!allowedOrigins.has(checkoutOrigin)) {
       return new Response(
         JSON.stringify({ error: 'Checkout is not available from this site origin.' }),
@@ -79,17 +94,15 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    if (!pkg.priceId) {
+      return new Response(
+        JSON.stringify({ error: 'Mastering checkout is not configured for this environment.' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      line_items: [{
-        price_data: {
-          currency: 'gbp',
-          product_data: { name: pkg.label },
-          unit_amount: pkg.amount,
-        },
-        quantity: 1,
-      }],
+      line_items: [{ price: pkg.priceId, quantity: 1 }],
       mode: 'payment',
       success_url: `${checkoutOrigin}/master?payment=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${checkoutOrigin}/master?payment=cancelled`,
@@ -131,3 +144,10 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+function stripeModeMatchesDeployment(stripeSecret: string, configuredMode?: string): boolean {
+  if (configuredMode !== undefined && configuredMode !== 'true' && configuredMode !== 'false') return false;
+  const keyMode = /^(?:sk|rk)_(test|live)_/.exec(stripeSecret)?.[1];
+  if (!keyMode) return false;
+  return keyMode === (configuredMode === 'false' ? 'test' : 'live');
+}

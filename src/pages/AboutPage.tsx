@@ -19,9 +19,9 @@ export function AboutPage() {
       </section>
 
       {/* Story */}
-      <section className="py-20 lg:py-28">
+      <section id="story" className="py-20 lg:py-28">
         <div className="container-base grid lg:grid-cols-2 gap-12 lg:gap-20">
-          <div>
+          <div id="brand">
             <p className="section-label mb-4">The Brand</p>
             <h2 className="text-display-lg">Wear the vision. Hear the vision.</h2>
             <div className="mt-6 space-y-4 text-slate-600 leading-relaxed">

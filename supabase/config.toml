@@ -1,5 +1,13 @@
 project_id = "fleoxzauuvfbdysvadev"
 
+[db]
+port = 5432
+
+[storage]
+enabled = true
+image = "public.ecr.aws/supabase/storage-api:v1.20.0"
+port = 5000
+
 [functions.create-checkout]
 verify_jwt = false
 
@@ -20,3 +28,6 @@ verify_jwt = false
 
 [functions.printful-webhook]
 verify_jwt = false
+
+[functions.sync-printful-catalog]
+verify_jwt = true

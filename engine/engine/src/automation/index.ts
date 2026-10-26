@@ -14,6 +14,10 @@ export type {
   SchedulerAdapter,
   SchedulerTickResult,
   AutomationConfig,
+  JobContracts,
+  OutboxEventContracts,
+  JobType,
+  OutboxEventType,
 } from '../contracts/automation.js';
 export { buildEvent } from '../contracts/automation.js';
 export { runOutboxTick } from './outbox.js';

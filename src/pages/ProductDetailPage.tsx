@@ -6,11 +6,26 @@ import type { Product, ProductVariant, Icon } from '@/types';
 import { useCart } from '@/hooks/useCart';
 import { formatPrice, storeImageUrl } from '@/lib/format';
 
+const VARIANT_SIZE_ORDER = ['XS', 'S', 'M', 'L', 'XL', '2XL', 'XXL', '3XL', '4XL', '5XL', 'One Size'];
+
+function sortVariantSizes(sizes: string[]): string[] {
+  return [...sizes].sort((left, right) => {
+    const leftIndex = VARIANT_SIZE_ORDER.indexOf(left);
+    const rightIndex = VARIANT_SIZE_ORDER.indexOf(right);
+    if (leftIndex !== -1 || rightIndex !== -1) {
+      return (leftIndex === -1 ? VARIANT_SIZE_ORDER.length : leftIndex)
+        - (rightIndex === -1 ? VARIANT_SIZE_ORDER.length : rightIndex);
+    }
+    return left.localeCompare(right, undefined, { numeric: true });
+  });
+}
+
 export function ProductDetailPage() {
   const { slug } = useParams<{ slug: string }>();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [selectedImage, setSelectedImage] = useState(0);
   const [selectedSize, setSelectedSize] = useState<string>('');
   const [selectedColor, setSelectedColor] = useState<string>('');
@@ -41,7 +56,7 @@ export function ProductDetailPage() {
         const variants = data.product_variants as ProductVariant[];
         const colors = [...new Set(variants.map((v) => v.color))];
         setSelectedColor(colors[0] ?? '');
-        const sizes = [...new Set(variants.map((v) => v.size))];
+        const sizes = sortVariantSizes([...new Set(variants.map((v) => v.size))]);
         setSelectedSize(sizes[0] ?? '');
       }
       setLoading(false);
@@ -53,7 +68,7 @@ export function ProductDetailPage() {
       }
     });
     return () => { active = false; };
-  }, [slug]);
+  }, [slug, retryCount]);
 
   if (loading) {
     return <div className="container-base py-20"><div className="grid lg:grid-cols-2 gap-8"><div className="aspect-[4/5] bg-slate-100 animate-pulse" /><div className="space-y-4"><div className="h-8 bg-slate-100 animate-pulse" /><div className="h-4 bg-slate-100 animate-pulse w-1/2" /><div className="h-32 bg-slate-100 animate-pulse" /></div></div></div>;
@@ -64,6 +79,7 @@ export function ProductDetailPage() {
       <div className="container-base py-32 text-center">
         <h1 className="text-display-lg">{loadError ? 'Product unavailable' : 'Product not found'}</h1>
         <p className="mt-3 text-slate-400">{loadError ?? 'This product may have been removed or is no longer available.'}</p>
+        {loadError && <button type="button" className="btn-outline mt-6" onClick={() => setRetryCount((count) => count + 1)}>Try again</button>}
         <Link to="/shop" className="btn-primary mt-8">Back to Shop</Link>
       </div>
     );
@@ -72,13 +88,16 @@ export function ProductDetailPage() {
   const images = product.product_images ?? [];
   const variants = product.product_variants ?? [];
   const colors = [...new Set(variants.map((v) => v.color))];
-  const sizes = [...new Set(variants.map((v) => v.size))];
+  const sizes = sortVariantSizes([...new Set(variants.map((v) => v.size))]);
+  const showColorSelector = colors.length > 1 || (colors[0] && colors[0].toLowerCase() !== 'default');
 
   const currentVariant = variants.find((v) => v.size === selectedSize && v.color === selectedColor);
-  const stock = currentVariant?.stock ?? 0;
+  const isMadeToOrderAvailable = Boolean(currentVariant?.printful_sync_variant_id)
+    && (currentVariant?.printful_availability_status == null || currentVariant.printful_availability_status === 'active');
+  const stock = isMadeToOrderAvailable ? 99 : currentVariant?.stock ?? 0;
   const price = currentVariant?.price_override ?? product.price;
-  const comingSoon = product.available_for_sale === false;
-  const soldOut = !comingSoon && stock === 0;
+  const unavailable = product.available_for_sale === false;
+  const soldOut = !unavailable && stock === 0;
 
   const handleAddToBag = () => {
     if (!currentVariant || soldOut) return;
@@ -141,10 +160,10 @@ export function ProductDetailPage() {
           <div className="lg:py-4">
             {product.is_new_arrival && <span className="badge-new mb-3">New Arrival</span>}
             {product.is_limited_drop && <span className="badge-limited mb-3">Limited Drop</span>}
-            {comingSoon && <span className="badge bg-jet text-bone mb-3">{product.availability_label ?? 'Coming Soon'}</span>}
+            {unavailable && <span className="badge bg-jet text-bone mb-3">{product.availability_label ?? 'Preview only'}</span>}
 
             <h1 className="text-display-lg">{product.name}</h1>
-            <p className="mt-3 text-xl font-semibold">{comingSoon ? 'TBA' : formatPrice(price)}</p>
+            <p className="mt-3 text-xl font-semibold">{formatPrice(price)}</p>
             {product.compare_at_price && (
               <p className="text-sm text-slate-400 line-through">{formatPrice(product.compare_at_price)}</p>
             )}
@@ -152,7 +171,7 @@ export function ProductDetailPage() {
             {product.description && <p className="mt-6 text-slate-600 leading-relaxed">{product.description}</p>}
 
             {/* Colour selector */}
-            {colors.length > 0 && (
+            {showColorSelector && (
               <div className="mt-8">
                 <label className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">Colour: <span className="text-jet">{selectedColor}</span></label>
                 <div className="mt-2 flex gap-2">
@@ -181,15 +200,17 @@ export function ProductDetailPage() {
                 <div className="mt-2 flex flex-wrap gap-2">
                   {sizes.map((s) => {
                     const variant = variants.find((v) => v.size === s && v.color === selectedColor);
-                    const inStock = variant && variant.stock > 0;
+                    const inStock = variant && (variant.stock > 0 || (variant.printful_sync_variant_id
+                      && (variant.printful_availability_status == null || variant.printful_availability_status === 'active')));
+                    const unavailableVariant = !unavailable && !inStock;
                     return (
                       <button
                         key={s}
                         onClick={() => setSelectedSize(s)}
-                        disabled={!inStock}
+                        disabled={unavailableVariant}
                         className={`min-w-[3rem] px-3 py-2.5 text-xs font-medium border transition-colors ${
                           selectedSize === s ? 'bg-jet text-bone border-jet' : 'border-jet/15 hover:border-jet'
-                        } ${!inStock ? 'opacity-40 cursor-not-allowed line-through' : ''}`}
+                        } ${unavailableVariant ? 'opacity-40 cursor-not-allowed line-through' : ''}`}
                       >
                         {s}
                       </button>
@@ -200,7 +221,7 @@ export function ProductDetailPage() {
             )}
 
             {/* Quantity + Add to bag */}
-            {!comingSoon && <div className="mt-8 flex items-center gap-3">
+            {!unavailable && <div className="mt-8 flex items-center gap-3">
               <div className="flex items-center border border-jet/15">
                 <button onClick={() => setQuantity((q) => Math.max(1, q - 1))} className="px-3 py-3 hover:bg-jet/5" aria-label="Decrease quantity">
                   <Minus size={14} />
@@ -223,17 +244,29 @@ export function ProductDetailPage() {
               </button>
             </div>}
 
-            {comingSoon && <ComingSoonNotice />}
+            {unavailable && <AvailabilityNotice />}
 
             {/* Buy now */}
-            {!comingSoon && <Link to="/checkout" onClick={handleAddToBag} className="btn-outline w-full mt-3" style={{ display: soldOut ? 'none' : 'flex' }}>
+            {!unavailable && <Link to="/checkout" onClick={handleAddToBag} className="btn-outline w-full mt-3" style={{ display: soldOut ? 'none' : 'flex' }}>
               Buy Now
             </Link>}
 
             {/* Info sections */}
             <div className="mt-10 space-y-5 border-t border-jet/10 pt-6">
-              <InfoRow icon={Truck} title="Delivery" text={product.delivery_info ?? 'Standard UK shipping 2-4 working days. Free shipping on orders over £75.'} />
-              <InfoRow icon={RotateCcw} title="Returns" text={product.return_info ?? '30-day returns on unworn items. See our returns policy for details.'} />
+              <InfoRow
+                icon={Truck}
+                title="Delivery"
+                text={unavailable
+                  ? 'Delivery details will be confirmed before this product is available to buy.'
+                  : product.delivery_info ?? 'Standard UK shipping 2-4 working days. Free shipping on orders over £75.'}
+              />
+              <InfoRow
+                icon={RotateCcw}
+                title="Returns"
+                text={unavailable
+                  ? 'Returns details will be published before this product is available to buy.'
+                  : product.return_info ?? '30-day returns on unworn items. See our returns policy for details.'}
+              />
               {product.material_care && <InfoRow icon={Check} title="Material & Care" text={product.material_care} />}
             </div>
 
@@ -271,32 +304,11 @@ export function ProductDetailPage() {
   );
 }
 
-function ComingSoonNotice() {
-  const [email, setEmail] = useState('');
-  const [subscribed, setSubscribed] = useState(false);
-
-  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const { error } = await supabase.from('newsletter_subscribers').insert({
-      email: email.trim(),
-      consent_text: 'Subscribed for AB16 product launch announcements',
-    });
-    if (!error || error.code === '23505') {
-      setSubscribed(true);
-      setEmail('');
-    }
-  };
-
-  if (subscribed) return <p className="mt-8 border border-jet/10 p-4 text-sm text-slate-500">You’re on the list for the launch announcement.</p>;
-
+function AvailabilityNotice() {
   return (
     <div className="mt-8 border border-jet/10 p-5">
-      <p className="text-sm font-semibold">Coming soon</p>
-      <p className="mt-1 text-sm text-slate-500">Join the list for launch news. Pricing, sizes, and availability will be announced later.</p>
-      <form onSubmit={submit} className="mt-4 flex gap-2">
-        <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" className="input-field flex-1" />
-        <button type="submit" className="btn-primary whitespace-nowrap">Notify me</button>
-      </form>
+      <p className="text-sm font-semibold">Preview only</p>
+      <p className="mt-1 text-sm text-slate-500">This product is available to view, but checkout is disabled while fulfilment and sale details are confirmed.</p>
     </div>
   );
 }

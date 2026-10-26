@@ -57,6 +57,17 @@ export function canSendOwnerNotification(order: OrderRecord): boolean {
   return order.owner_order_notified_at == null;
 }
 
+/** Stripe test events may update staging orders, but never trigger fulfillment or credits. */
+export function shouldSubmitPrintfulOrder(livemode: boolean): boolean {
+  return livemode;
+}
+
+export function stripeModeMatchesDeployment(livemode: boolean, configuredMode?: string): boolean {
+  const expectedLiveMode = configuredMode === 'false' ? false : true;
+  return (configuredMode === undefined || configuredMode === 'true' || configuredMode === 'false')
+    && livemode === expectedLiveMode;
+}
+
 export function canInsertPrintfulOrderItem(existingItems: Array<{ id: string }>): boolean {
   return existingItems.length === 0;
 }

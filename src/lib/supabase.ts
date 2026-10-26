@@ -19,6 +19,11 @@ try {
 }
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  // Catalog and site content change outside the browser. Avoid serving an old
+  // PostgREST GET response from the browser's HTTP cache after an upload/sync.
+  global: {
+    fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
+  },
   auth: {
     persistSession: true,
     autoRefreshToken: true,

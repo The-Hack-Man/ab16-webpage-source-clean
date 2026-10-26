@@ -35,6 +35,10 @@ export type {
   OutboxTickResult,
   AutomationConfig,
   OutboxTickDeps,
+  JobContracts,
+  OutboxEventContracts,
+  JobType,
+  OutboxEventType,
 } from './src/automation/index.js';
 
 export { DefaultObservabilityProvider } from './src/observability/index.js';
@@ -43,7 +47,7 @@ export type { HealthCheck, HealthStatus, DependencyCheck, ObservabilityProvider 
 export { LaunchOrchestrator, type LaunchOrchestratorConfig } from './src/commerce_ops/launch_orchestrator.js';
 export { StripeService, STRIPE_CONFIG } from './src/stripe/index.js';
 
-export { buildEvent } from './src/contracts/automation.js';
+export { buildEvent, isVersionedRunPayload } from './src/contracts/automation.js';
 
 export type {
   AuditEventWriter,

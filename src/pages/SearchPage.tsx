@@ -13,20 +13,35 @@ export function SearchPage() {
   const [releases, setReleases] = useState<MusicRelease[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'products' | 'music'>('products');
+  const [loadError, setLoadError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     if (!query.trim()) return;
+    let active = true;
     setLoading(true);
+    setLoadError(false);
     (async () => {
-      const [prodRes, relRes] = await Promise.all([
-        supabase.from('products').select('*, product_images(*), product_variants(*)').eq('status', 'published').ilike('name', `%${query}%`),
-        supabase.from('music_releases').select('*').in('status', ['published', 'upcoming']).ilike('title', `%${query}%`),
-      ]);
-      setProducts(prodRes.data as Product[] ?? []);
-      setReleases(relRes.data as MusicRelease[] ?? []);
-      setLoading(false);
+      try {
+        const [prodRes, relRes] = await Promise.all([
+          supabase.from('products').select('*, product_images(*), product_variants(*)').eq('status', 'published').ilike('name', `%${query}%`),
+          supabase.from('music_releases').select('*').in('status', ['published', 'upcoming']).ilike('title', `%${query}%`),
+        ]);
+        if (!active) return;
+        setLoadError(Boolean(prodRes.error || relRes.error));
+        setProducts(prodRes.data as Product[] ?? []);
+        setReleases(relRes.data as MusicRelease[] ?? []);
+      } catch {
+        if (!active) return;
+        setLoadError(true);
+        setProducts([]);
+        setReleases([]);
+      } finally {
+        if (active) setLoading(false);
+      }
     })();
-  }, [query]);
+    return () => { active = false; };
+  }, [query, retryKey]);
 
   const hasResults = products.length > 0 || releases.length > 0;
 
@@ -42,6 +57,11 @@ export function SearchPage() {
       <div className="container-base py-10">
         {loading ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{[0,1,2,3].map((i) => <div key={i} className="aspect-[4/5] bg-slate-100 animate-pulse" />)}</div>
+        ) : loadError ? (
+          <div role="alert" className="border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            <p>Search results could not be loaded.</p>
+            <button type="button" className="mt-2 font-semibold underline" onClick={() => setRetryKey((key) => key + 1)}>Try again</button>
+          </div>
         ) : !query.trim() ? (
           <div className="text-center py-20">
             <SearchIcon size={32} className="mx-auto text-slate-300 mb-4" />

@@ -1,16 +1,17 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, Music2, Mic, MapPin, Mail, ExternalLink } from 'lucide-react';
 import type { Icon } from '@/types';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
-const JAMIE_IMAGE = 'https://images.pexels.com/photos/31510586/pexels-photo-31510586.jpeg?auto=compress&cs=tinysrgb&w=1200';
-const STUDIO_IMAGE = 'https://images.pexels.com/photos/8041263/pexels-photo-8041263.jpeg?auto=compress&cs=tinysrgb&w=1200';
+const JAMIE_IMAGE = '/images/site/jamie-g-home.png';
 
 export function AboutJamieGPage() {
+  const settings = useSiteSettings();
   return (
     <div className="bg-jet text-bone min-h-screen">
       {/* Hero */}
       <section className="relative h-[65vh] min-h-[450px] overflow-hidden">
-        <img src={JAMIE_IMAGE} alt="Jamie G" className="absolute inset-0 w-full h-full object-cover opacity-50" />
+        <img src={settings?.jamie_hero_image_url || JAMIE_IMAGE} alt="Jamie G" className="absolute inset-0 w-full h-full object-cover opacity-50" />
         <div className="absolute inset-0 bg-gradient-to-b from-jet/30 via-jet/50 to-jet" />
         <div className="relative h-full container-base flex flex-col justify-end pb-16">
           <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-bone/50 mb-4">The Artist</p>
@@ -23,7 +24,7 @@ export function AboutJamieGPage() {
       <section className="py-20 lg:py-28">
         <div className="container-base grid lg:grid-cols-2 gap-12 lg:gap-20 items-start">
           <div className="aspect-[4/5] overflow-hidden">
-            <img src={STUDIO_IMAGE} alt="Jamie G in studio" className="w-full h-full object-cover" />
+            <img src={settings?.jamie_studio_image_url || JAMIE_IMAGE} alt="Jamie G" className="w-full h-full object-cover" />
           </div>
 
           <div>
@@ -71,12 +72,12 @@ export function AboutJamieGPage() {
           <p className="section-label text-bone/40 mb-4">Official Jamie G links</p>
           <div className="flex flex-wrap gap-3">
             {[
-              ['YouTube', 'https://www.youtube.com/channel/UCDTrDLZyf8YTXvKFTHOCkyg'],
-              ['Spotify', 'https://open.spotify.com/artist/05IDis5l8XLJKkWp7CAOcC'],
-              ['Amazon Music', 'https://music.amazon.co.uk/artists/B0F9SBKZVD/jamie-g'],
-              ['TikTok', 'https://www.tiktok.com/@jamiegmusic'],
-              ['Apple Music', 'https://music.apple.com/us/artist/jamie-g/1815382137'],
-            ].map(([label, url]) => <a key={label} href={url} target="_blank" rel="noopener noreferrer" className="btn-outline-light">{label} <ExternalLink size={13} /></a>)}
+              ['YouTube', settings?.youtube_url || 'https://www.youtube.com/channel/UCDTrDLZyf8YTXvKFTHOCkyg'],
+              ['Spotify', settings?.spotify_url || 'https://open.spotify.com/artist/05IDis5l8XLJKkWp7CAOcC'],
+              ['Amazon Music', settings?.amazon_music_url || 'https://music.amazon.co.uk/artists/B0F9SBKZVD/jamie-g'],
+              ['TikTok', settings?.tiktok_url || 'https://www.tiktok.com/@jamiegmusic'],
+              ['Apple Music', settings?.apple_music_url || 'https://music.apple.com/us/artist/jamie-g/1815382137'],
+            ].filter(([, url]) => Boolean(url)).map(([label, url]) => <a key={label} href={url} target="_blank" rel="noopener noreferrer" className="btn-outline-light">{label} <ExternalLink size={13} /></a>)}
           </div>
         </div>
       </section>

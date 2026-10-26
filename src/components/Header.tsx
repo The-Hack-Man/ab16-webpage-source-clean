@@ -13,7 +13,7 @@ const NAV_LINKS = [
   { label: 'Music', to: '/music' },
   { label: 'Releases', to: '/music/releases' },
   { label: 'Videos', to: '/music/videos' },
-  { label: 'Audio Master', to: '/master', icon: BrainCircuit },
+  { label: 'Mastering', to: '/master', icon: BrainCircuit },
   { label: 'About', to: '/about' },
   { label: 'Contact', to: '/contact' },
 ];

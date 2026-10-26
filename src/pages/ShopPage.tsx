@@ -15,6 +15,7 @@ export function ShopPage({ filter }: { filter?: 'new' | 'collection' }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const selectedCategories = useMemo(() => searchParams.get('category')?.split(',').filter(Boolean) ?? [], [searchParams]);
   const selectedSizes = useMemo(() => searchParams.get('size')?.split(',').filter(Boolean) ?? [], [searchParams]);
@@ -45,7 +46,19 @@ export function ShopPage({ filter }: { filter?: 'new' | 'collection' }) {
       setLoading(false);
     })();
     return () => { active = false; };
-  }, [filter, maxPrice]);
+  }, [filter, maxPrice, refreshKey]);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') setRefreshKey((key) => key + 1);
+    };
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     let result = products;
@@ -74,7 +87,14 @@ export function ShopPage({ filter }: { filter?: 'new' | 'collection' }) {
         <div className="container-base py-12 lg:py-16">
           <p className="section-label mb-3">AB16 Clothing</p>
           <h1 className="text-display-lg">{title}</h1>
-          <p className="mt-3 text-sm text-slate-400">{filtered.length} {filtered.length === 1 ? 'piece' : 'pieces'} · Independent Aberdeen streetwear</p>
+          <p className="mt-3 text-sm text-slate-400">
+            {loading
+              ? 'Loading catalogue'
+              : loadError
+                ? 'Catalogue unavailable'
+                : `${filtered.length} ${filtered.length === 1 ? 'piece' : 'pieces'}`}
+            {' · Independent Aberdeen streetwear'}
+          </p>
         </div>
       </div>
 

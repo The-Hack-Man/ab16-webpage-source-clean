@@ -6,8 +6,9 @@ import {
   type ReleasePublisherConfig,
 } from '../../../engine/engine/index.ts';
 
+const SITE_ORIGIN = new URL(Deno.env.get('PUBLIC_SITE_URL') ?? 'https://ab16clothing.co.uk').origin;
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': SITE_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -161,18 +162,7 @@ Deno.serve(async (req) => {
         if (error) return { ok: false, error: new Error(error.message) } as const;
         if (!release) return { ok: false, error: new Error(`Release ${request.releaseId} not found`) } as const;
 
-        const baseUrl = Deno.env.get('SITE_URL') ?? '';
-        void baseUrl;
-
         const affectedPaths: string[] = [`/releases/${release.slug}`, '/releases', '/'];
-
-        await serviceRoleDb.from('outbox').insert({
-          event_type: 'music.release.published',
-          payload: { releaseId: request.releaseId, actorId: ctx.userId },
-          version: 1,
-          correlation_id: correlationId,
-          idempotency_key: `music.release.published:${correlationId}`,
-        });
 
         return {
           ok: true,

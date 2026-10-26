@@ -18,6 +18,11 @@ import { Link } from 'react-router-dom';
 const DEMO_DURATION = 30;
 const MAX_TRACK_DURATION = 15 * 60;
 const EQ_LABELS = ['SUB', 'LOW', 'LO-MID', 'MID', 'PRES', 'HIGH', 'AIR'];
+const MASTERING_PACKAGES = [
+  { id: 'single', credits: 1, price: 5 },
+  { id: 'pack5', credits: 5, price: 25 },
+  { id: 'pack10', credits: 10, price: 50 },
+] as const;
 
 export function MasterPage() {
   const { user } = useAuth();
@@ -45,6 +50,7 @@ export function MasterPage() {
   const [downloadName, setDownloadName] = useState<string>('master');
   const [downloadScope, setDownloadScope] = useState<'preview' | 'full'>('preview');
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [selectedMasteringPackage, setSelectedMasteringPackage] = useState<(typeof MASTERING_PACKAGES)[number]['id']>('single');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [credits, setCredits] = useState<number | null>(null);
   const [creditsLoading, setCreditsLoading] = useState(false);
@@ -268,7 +274,7 @@ export function MasterPage() {
       }
 
       const { data, error } = await supabase.functions.invoke<{ url?: string; error?: string }>('stripe-checkout', {
-        body: { package: 'single', origin: window.location.origin },
+        body: { package: selectedMasteringPackage, origin: window.location.origin },
       });
       if (error) throw new Error(data?.error || error.message);
       if (!data?.url) throw new Error(data?.error || 'Stripe did not return a checkout link.');
@@ -862,10 +868,23 @@ export function MasterPage() {
                   ) : (
                     <div className="flex items-center gap-2">
                       {user ? (
-                        <>
+                        <div className="flex flex-col items-end gap-2">
                           <span className="text-xs text-studio-textMuted">
                             {creditsLoading ? 'Checking credits…' : 'Full-track master'}
                           </span>
+                          <div role="group" aria-label="Choose mastering credits" className="flex flex-wrap justify-end gap-1.5">
+                            {MASTERING_PACKAGES.map((pkg) => (
+                              <button
+                                key={pkg.id}
+                                type="button"
+                                aria-pressed={selectedMasteringPackage === pkg.id}
+                                onClick={() => setSelectedMasteringPackage(pkg.id)}
+                                className={`rounded-md border px-2.5 py-1.5 text-xs font-semibold transition-colors ${selectedMasteringPackage === pkg.id ? 'border-studio-accent bg-studio-accent/15 text-studio-text' : 'border-studio-border text-studio-textMuted hover:border-studio-textMuted'}`}
+                              >
+                                {pkg.credits} {pkg.credits === 1 ? 'credit' : 'credits'} · £{pkg.price}
+                              </button>
+                            ))}
+                          </div>
                           <button
                             type="button"
                             onClick={handleCheckout}
@@ -873,16 +892,16 @@ export function MasterPage() {
                             className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-studio-accent to-blue-600 text-white rounded-lg text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
                           >
                             {checkoutLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
-                            Unlock full track · £5
+                            Buy {MASTERING_PACKAGES.find((pkg) => pkg.id === selectedMasteringPackage)?.credits} credit{selectedMasteringPackage === 'single' ? '' : 's'} · £{MASTERING_PACKAGES.find((pkg) => pkg.id === selectedMasteringPackage)?.price}
                           </button>
-                        </>
+                        </div>
                       ) : (
                         <Link
                           to="/account/login"
                           className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-studio-accent to-blue-600 text-white rounded-lg text-sm font-bold"
                         >
                           <Lock className="w-4 h-4" />
-                          Sign in to unlock · £5
+                          Sign in to buy credits · £5–£50
                         </Link>
                       )}
                     </div>

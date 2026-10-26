@@ -6,9 +6,11 @@ import { formatPrice, storeImageUrl } from '@/lib/format';
 export function ProductCard({ product }: { product: Product }) {
   const image = storeImageUrl(product.product_images?.[0]?.url);
   const secondImage = storeImageUrl(product.product_images?.[1]?.url);
-  const totalStock = product.product_variants?.reduce((sum, v) => sum + v.stock, 0) ?? 0;
-  const comingSoon = product.available_for_sale === false;
-  const soldOut = !comingSoon && totalStock === 0;
+  const totalStock = product.product_variants?.reduce((sum, v) => sum + (
+    v.printful_sync_variant_id && (v.printful_availability_status == null || v.printful_availability_status === 'active') ? 1 : v.stock
+  ), 0) ?? 0;
+  const unavailable = product.available_for_sale === false;
+  const soldOut = !unavailable && totalStock === 0;
 
   return (
     <Link to={`/shop/${product.slug}`} className="group block animate-rise-in" style={{ animationDelay: `${(product.id.charCodeAt(0) % 4) * 100}ms` }}>
@@ -46,7 +48,7 @@ export function ProductCard({ product }: { product: Product }) {
           )}
           {product.is_limited_drop && <span className="badge-limited">Limited</span>}
           {product.compare_at_price && <span className="badge-sale">Sale</span>}
-          {comingSoon && <span className="badge bg-jet text-bone">Coming Soon</span>}
+          {unavailable && <span className="badge bg-jet text-bone">Preview only</span>}
           {soldOut && <span className="badge-soldout">Sold Out</span>}
         </div>
 
@@ -74,7 +76,7 @@ export function ProductCard({ product }: { product: Product }) {
               <span className="text-xs text-slate-400 line-through">{formatPrice(product.compare_at_price)}</span>
             </div>
           ) : (
-            <span className="text-sm font-semibold text-jet">{comingSoon ? 'TBA' : formatPrice(product.price)}</span>
+            <span className="text-sm font-semibold text-jet">{formatPrice(product.price)}</span>
           )}
         </div>
       </div>

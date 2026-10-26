@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Pencil, Trash2, Package } from 'lucide-react';
+import { ExternalLink, Search, Pencil, Trash2, Package, RefreshCw, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { formatPrice } from '@/lib/format';
 import type { Product } from '@/types';
@@ -10,6 +10,7 @@ export function AdminProducts() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
 
   useEffect(() => {
     load();
@@ -37,14 +38,35 @@ export function AdminProducts() {
     }
   };
 
+  const toggleStorefront = async (product: Product) => {
+    const nextStatus = product.status === 'published' ? 'draft' : 'published';
+    setPublishingId(product.id);
+    setDeleteError(null);
+    const { error } = await supabase.from('products').update({
+      status: nextStatus,
+      ...(nextStatus === 'published' ? { is_new_arrival: true } : {}),
+    }).eq('id', product.id);
+    if (error) {
+      setDeleteError(`Could not ${nextStatus === 'published' ? 'publish' : 'hide'} product: ${error.message}`);
+    } else {
+      setProducts((current) => current.map((item) => item.id === product.id
+        ? { ...item, status: nextStatus, ...(nextStatus === 'published' ? { is_new_arrival: true } : {}) }
+        : item));
+    }
+    setPublishingId(null);
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Products</h1>
-          <p className="text-sm text-slate-500 mt-1">{products.length} total</p>
+          <h1 className="text-2xl font-bold">Store listings</h1>
+          <p className="text-sm text-slate-500 mt-1">Customer-facing listings mirrored from Printful · {products.length} total</p>
         </div>
-        <Link to="/admin/products/new" className="btn-primary"><Plus size={16} /> New Product</Link>
+        <div className="flex flex-wrap justify-end gap-2">
+          <a href="https://www.printful.com/dashboard/store" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"><ExternalLink size={15} /> Manage products in Printful</a>
+          <Link to="/admin/printful" className="btn-primary"><RefreshCw size={15} /> Sync Printful catalog</Link>
+        </div>
       </div>
 
       <div className="relative mb-4">
@@ -64,8 +86,8 @@ export function AdminProducts() {
       ) : filtered.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded py-16 text-center">
           <Package size={32} className="mx-auto text-slate-300 mb-3" />
-          <p className="text-slate-500">No products yet.</p>
-          <Link to="/admin/products/new" className="btn-primary mt-4">Create your first product</Link>
+          <p className="text-slate-500">Create products in Printful, then sync the catalog here. Each provider product and variant is matched by its Printful ID.</p>
+          <Link to="/admin/printful" className="btn-primary mt-4"><RefreshCw size={15} /> Sync Printful catalog</Link>
         </div>
       ) : (
         <div className="bg-white border border-slate-200 rounded overflow-hidden">
@@ -91,6 +113,16 @@ export function AdminProducts() {
                       <span className={`badge ${p.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>{p.status}</span>
                     </td>
                     <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => void toggleStorefront(p)}
+                        disabled={publishingId === p.id}
+                        className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-50 ${p.status === 'published' ? 'text-slate-600 hover:bg-slate-100' : 'text-green-700 hover:bg-green-50'}`}
+                        title={p.status === 'published' ? 'Hide from storefront' : 'Publish to storefront'}
+                      >
+                        {p.status === 'published' ? <EyeOff size={13} /> : <Eye size={13} />}
+                        {publishingId === p.id ? 'Saving…' : p.status === 'published' ? 'Hide' : 'Publish'}
+                      </button>
                       <Link to={`/admin/products/${p.id}`} className="inline-flex p-1.5 hover:bg-slate-200 rounded" title="Edit"><Pencil size={14} /></Link>
                       <button onClick={() => deleteProduct(p.id)} className="inline-flex p-1.5 hover:bg-red-100 rounded text-red-500 ml-1" title="Delete"><Trash2 size={14} /></button>
                     </td>

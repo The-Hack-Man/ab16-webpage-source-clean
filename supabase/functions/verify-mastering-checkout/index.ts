@@ -1,16 +1,18 @@
 import Stripe from 'https://esm.sh/stripe@16.12.0?target=deno';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
+const SITE_ORIGIN = new URL(Deno.env.get('PUBLIC_SITE_URL') ?? 'https://ab16clothing.co.uk').origin;
+const IS_TEST_DEPLOYMENT = Deno.env.get('STRIPE_EXPECT_LIVE_MODE') === 'false';
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': IS_TEST_DEPLOYMENT ? '*' : SITE_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-const PACKAGES: Record<string, { credits: number; amount: number }> = {
-  single: { credits: 1, amount: 500 },
-  pack5: { credits: 5, amount: 2500 },
-  pack10: { credits: 10, amount: 5000 },
+const PACKAGES: Record<string, { credits: number; amount: number; priceId?: string }> = {
+  single: { credits: 1, amount: 500, priceId: Deno.env.get('STRIPE_MASTERING_PRICE_SINGLE') },
+  pack5: { credits: 5, amount: 2500, priceId: Deno.env.get('STRIPE_MASTERING_PRICE_PACK5') },
+  pack10: { credits: 10, amount: 5000, priceId: Deno.env.get('STRIPE_MASTERING_PRICE_PACK10') },
 };
 
 Deno.serve(async (req) => {
@@ -21,8 +23,13 @@ Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!stripeKey || !supabaseUrl || !anonKey || !serviceRoleKey) {
+  const expectedStripeMode = Deno.env.get('STRIPE_EXPECT_LIVE_MODE');
+  if (!stripeKey || !stripeModeMatchesDeployment(stripeKey, expectedStripeMode)
+    || !supabaseUrl || !anonKey || !serviceRoleKey) {
     return json({ error: 'Mastering payment verification is not configured.' }, 503);
+  }
+  if (Object.values(PACKAGES).some((pkg) => !pkg.priceId)) {
+    return json({ error: 'Mastering payment prices are not configured.' }, 503);
   }
 
   const token = req.headers.get('Authorization')?.match(/^Bearer\s+(.+)$/i)?.[1];
@@ -48,15 +55,23 @@ Deno.serve(async (req) => {
     if (authError || !authData.user) return json({ error: 'Your sign-in session is invalid. Sign in and try again.' }, 401);
 
     const stripe = new Stripe(stripeKey, { apiVersion: '2024-06-20' });
-    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['line_items.data.price'],
+    });
     const userId = authData.user.id;
     const pkg = PACKAGES[session.metadata?.package ?? ''];
     const metadataCredits = Number(session.metadata?.credits);
+    const lineItems = session.line_items?.data ?? [];
+    const lineItemPrice = lineItems[0]?.price;
+    const lineItemPriceId = typeof lineItemPrice === 'string' ? lineItemPrice : lineItemPrice?.id;
 
     if (session.mode !== 'payment'
       || session.client_reference_id !== userId
       || session.metadata?.user_id !== userId
       || !pkg
+      || lineItems.length !== 1
+      || lineItems[0].quantity !== 1
+      || lineItemPriceId !== pkg.priceId
       || metadataCredits !== pkg.credits
       || session.currency !== 'gbp'
       || session.amount_total !== pkg.amount) {
@@ -109,4 +124,11 @@ function json(payload: Record<string, unknown>, status = 200) {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+function stripeModeMatchesDeployment(stripeSecret: string, configuredMode?: string): boolean {
+  if (configuredMode !== undefined && configuredMode !== 'true' && configuredMode !== 'false') return false;
+  const keyMode = /^(?:sk|rk)_(test|live)_/.exec(stripeSecret)?.[1];
+  if (!keyMode) return false;
+  return keyMode === (configuredMode === 'false' ? 'test' : 'live');
 }

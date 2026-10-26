@@ -1,13 +1,15 @@
 import { Link } from 'react-router-dom';
-import { Instagram, Youtube, Music2, Mail, ArrowRight } from 'lucide-react';
+import { Instagram, Youtube, Music2, Mail, ArrowRight, Music } from 'lucide-react';
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { AB16Logo, JamieGLogo } from '@/components/Logo';
+import { useSiteSettings } from '@/hooks/useSiteSettings';
 
 export function Footer() {
   const year = new Date().getFullYear();
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'done' | 'error'>('idle');
+  const settings = useSiteSettings();
 
   const subscribe = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,24 +120,24 @@ export function Footer() {
       <div className="border-t border-bone/10">
         <div className="container-base py-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p className="text-[11px] text-bone/40">© {year} AB16 Clothing × Jamie G Music. All rights reserved.</p>
-          <div className="flex items-center gap-5">
-            <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="Instagram">
+          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3 sm:justify-start">
+            <a href={settings?.instagram_url || 'https://www.instagram.com/ab16clothing/'} target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="Instagram">
               <Instagram size={18} strokeWidth={1.5} className="group-hover:scale-110 group-hover:text-accent transition-all" />
             </a>
-            <a href="https://www.youtube.com/channel/UCDTrDLZyf8YTXvKFTHOCkyg" target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="YouTube">
+            <a href={settings?.youtube_url || 'https://www.youtube.com/channel/UCDTrDLZyf8YTXvKFTHOCkyg'} target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="YouTube">
               <Youtube size={18} strokeWidth={1.5} className="group-hover:scale-110 group-hover:text-accent transition-all" />
             </a>
-            <a href="https://www.tiktok.com/@jamiegmusic" target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="TikTok">
+            <a href={settings?.tiktok_url || 'https://www.tiktok.com/@jamiegmusic'} target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="TikTok">
               <Music2 size={18} strokeWidth={1.5} className="group-hover:scale-110 group-hover:text-accent transition-all" />
             </a>
-            <a href="https://open.spotify.com/artist/05IDis5l8XLJKkWp7CAOcC" target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="Spotify">
-              <Music2 size={18} strokeWidth={1.5} className="group-hover:scale-110 group-hover:text-accent transition-all" />
+            <a href={settings?.spotify_url || 'https://open.spotify.com/artist/05IDis5l8XLJKkWp7CAOcC'} target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="Spotify">
+              <Music size={18} strokeWidth={1.5} className="group-hover:scale-110 group-hover:text-accent transition-all" />
             </a>
-            <a href="https://music.apple.com/us/artist/jamie-g/1815382137" target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="Apple Music">
-              <Music2 size={18} strokeWidth={1.5} className="group-hover:scale-110 group-hover:text-accent transition-all" />
+            <a href={settings?.apple_music_url || 'https://music.apple.com/us/artist/jamie-g/1815382137'} target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="Apple Music">
+              <Music size={18} strokeWidth={1.5} className="group-hover:scale-110 group-hover:text-accent transition-all" />
             </a>
-            <a href="https://music.amazon.co.uk/artists/B0F9SBKZVD/jamie-g" target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="Amazon Music">
-              <Music2 size={18} strokeWidth={1.5} className="group-hover:scale-110 group-hover:text-accent transition-all" />
+            <a href={settings?.amazon_music_url || 'https://music.amazon.co.uk/artists/B0F9SBKZVD/jamie-g'} target="_blank" rel="noopener noreferrer" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="Amazon Music">
+              <Music size={18} strokeWidth={1.5} className="group-hover:scale-110 group-hover:text-accent transition-all" />
             </a>
             <a href="mailto:mcjamieg@zohomail.eu" className="relative group text-bone/50 hover:text-bone transition-colors" aria-label="Email">
               <Mail size={18} strokeWidth={1.5} className="group-hover:scale-110 group-hover:text-accent transition-all" />

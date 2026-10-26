@@ -7,13 +7,14 @@ import {
   checkMasteringCreditIdempotency,
   describeClaimOutcome,
   isPrintfulConfirmedButUnreconciled,
+  shouldSubmitPrintfulOrder,
+  stripeModeMatchesDeployment,
   type OrderRecord,
   type PaymentRecord,
 } from './idempotency.ts';
 import { verifyStripeWebhookSignature } from './request_guard.ts';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, stripe-signature',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
@@ -81,11 +82,15 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed.' }, 405);
 
-  const stripeKey = Deno.env.get('STRIPE_SECRET_KEY');
-  const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
+  const stripeKey = Deno.env.get('STRIPE_SECRET_KEY')?.trim();
+  const expectedStripeMode = Deno.env.get('STRIPE_EXPECT_LIVE_MODE');
+  const legacyWebhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')?.trim();
+  const testWebhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET_TEST')?.trim();
+  const liveWebhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET_LIVE')?.trim();
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_SECRET_KEY');
-  if (!stripeKey || !webhookSecret || !supabaseUrl || !serviceRoleKey) {
+  if (!stripeKey || (!legacyWebhookSecret && !testWebhookSecret && !liveWebhookSecret) || !supabaseUrl || !serviceRoleKey
+    || !stripeModeMatchesDeployment(expectedStripeMode === 'false' ? false : true, expectedStripeMode)) {
     return json({ error: 'The Stripe webhook is not configured.' }, 503);
   }
 
@@ -93,22 +98,42 @@ Deno.serve(async (req) => {
   if (!signature) return json({ error: 'Missing Stripe signature.' }, 400);
 
   const stripe = new Stripe(stripeKey, { apiVersion: '2024-06-20' });
-  const verification = await verifyStripeWebhookSignature(
-    req,
-    webhookSecret,
-    (body, requestSignature, secret) =>
-      stripe.webhooks.constructEventAsync(body, requestSignature, secret),
-  );
-  if (!verification.success) {
-    if (verification.reason === 'invalid_signature') {
-      console.error('Stripe webhook signature verification failed:', verification.error);
-    }
-    const message = verification.reason === 'missing_signature'
-      ? 'Missing Stripe signature.'
-      : 'Invalid Stripe signature.';
-    return json({ error: message }, 400);
+  const secretCandidates: Array<{ secret: string; expectedLiveMode: boolean | null }> = [];
+  if (testWebhookSecret) secretCandidates.push({ secret: testWebhookSecret, expectedLiveMode: false });
+  if (liveWebhookSecret) secretCandidates.push({ secret: liveWebhookSecret, expectedLiveMode: true });
+  if (secretCandidates.length === 0 && legacyWebhookSecret) {
+    secretCandidates.push({ secret: legacyWebhookSecret, expectedLiveMode: null });
   }
-  const event = verification.event;
+
+  let event: Stripe.Event | null = null;
+  let lastSignatureError: unknown = null;
+  for (const candidate of secretCandidates) {
+    const verification = await verifyStripeWebhookSignature(
+      req.clone(),
+      candidate.secret,
+      (body, requestSignature, secret) =>
+        stripe.webhooks.constructEventAsync(body, requestSignature, secret),
+    );
+    if (!verification.success) {
+      if (verification.reason === 'invalid_signature') lastSignatureError = verification.error;
+      continue;
+    }
+    if (candidate.expectedLiveMode !== null && verification.event.livemode !== candidate.expectedLiveMode) {
+      console.error('Stripe webhook mode mismatch; rejecting event.');
+      return json({ error: 'Stripe event mode does not match the webhook signing secret.' }, 400);
+    }
+    if (!stripeModeMatchesDeployment(verification.event.livemode, expectedStripeMode)) {
+      console.error('Stripe event mode does not match this deployment; rejecting event.');
+      return json({ error: 'Stripe event mode does not match this deployment.' }, 400);
+    }
+    event = verification.event;
+    break;
+  }
+
+  if (!event) {
+    console.error('Stripe webhook signature verification failed:', lastSignatureError);
+    return json({ error: 'Invalid Stripe signature.' }, 400);
+  }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -188,6 +213,15 @@ async function processStripeEvent(
   if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
     const session = event.data.object as Stripe.Checkout.Session;
     if (session.payment_status !== 'paid') {
+      return;
+    }
+
+    // Test-mode events can validate staging payment recording, but must never
+    // grant credits, notify the owner, or submit a real Printful order.
+    if (!shouldSubmitPrintfulOrder(event.livemode)) {
+      const testOrderId = session.metadata?.order_id;
+      if (testOrderId) await markTestOrderPaid(supabase, session, testOrderId);
+      console.info('Stripe test-mode event recorded without production fulfillment side effects.');
       return;
     }
 
@@ -277,6 +311,46 @@ async function processStripeEvent(
           .eq('status', 'pending');
         if (error) throw new Error('Could not mark the failed mastering payment.');
       }
+    }
+  }
+}
+
+async function markTestOrderPaid(
+  supabase: ReturnType<typeof createClient>,
+  session: Stripe.Checkout.Session,
+  orderId: string,
+) {
+  const { data: order, error } = await supabase
+    .from('orders')
+    .select('id, total, payment_status')
+    .eq('id', orderId)
+    .maybeSingle();
+  if (error || !order) throw new Error('Test clothing order could not be loaded.');
+  if (session.currency?.toLowerCase() !== 'gbp' || session.amount_total !== order.total) {
+    throw new Error('Test payment amount or currency does not match the clothing order.');
+  }
+  if (order.payment_status === 'paid') return;
+  if (order.payment_status !== 'pending') throw new Error('Test clothing order is no longer awaiting payment.');
+
+  const { data: updated, error: updateError } = await supabase
+    .from('orders')
+    .update({
+      payment_status: 'paid',
+      payment_intent_id: session.payment_intent ? String(session.payment_intent) : session.id,
+    })
+    .eq('id', orderId)
+    .eq('payment_status', 'pending')
+    .select('id')
+    .maybeSingle();
+  if (updateError) throw new Error('Test clothing order payment could not be recorded.');
+  if (!updated) {
+    const { data: current, error: recheckError } = await supabase
+      .from('orders')
+      .select('payment_status')
+      .eq('id', orderId)
+      .maybeSingle();
+    if (recheckError || current?.payment_status !== 'paid') {
+      throw new Error('Test clothing order payment could not be confirmed.');
     }
   }
 }
